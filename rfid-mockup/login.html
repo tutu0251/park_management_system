@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script>
+    (function () {
+      var p = location.pathname;
+      if (!p.endsWith("/")) {
+        var segments = p.split("/").filter(function (s) {
+          return s.length > 0;
+        });
+        var last = segments[segments.length - 1] || "";
+        if (/\.[^./]+$/.test(last)) {
+          p = p.substring(0, p.lastIndexOf("/") + 1);
+        } else if (segments.length <= 1) {
+          p = p + "/";
+        } else {
+          p = p.substring(0, p.lastIndexOf("/") + 1);
+        }
+      }
+      var b = document.createElement("base");
+      b.href = p;
+      document.head.insertBefore(b, document.head.firstChild);
+    })();
+  </script>
+  <title>Sign in — Park RFID Operations</title>
+  <link rel="stylesheet" href="./css/styles.css" />
+</head>
+<body class="login-page">
+  <div class="login-card">
+    <div class="login-brand">
+      <p class="title">Riverside Adventure Park</p>
+      <p class="subtitle">RFID operations console — sign in</p>
+    </div>
+    <form id="login-form" novalidate>
+      <div class="form-row">
+        <label for="identifier">Email or username</label>
+        <input id="identifier" name="identifier" type="text" required autocomplete="username" placeholder="you@park.local" />
+      </div>
+      <div class="form-row">
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" required autocomplete="current-password" />
+      </div>
+      <label class="remember-row">
+        <input type="checkbox" name="remember" />
+        Remember me (stay signed in on this device)
+      </label>
+      <p id="login-error" class="form-error" role="alert"></p>
+      <button type="submit" class="btn btn-primary" style="width: 100%">Sign in</button>
+    </form>
+    <p class="login-demo-hint">
+      Demo accounts (password <code>demo123</code>):<br />
+      <strong>Admin</strong> <code>admin@riverside.park</code><br />
+      <strong>Operator</strong> <code>operator@riverside.park</code><br />
+      <strong>Staff</strong> <code>staff@riverside.park</code><br />
+      Inactive example: <code>pending@riverside.park</code> (cannot sign in until activated in User Management).
+    </p>
+  </div>
+  <script type="module" src="./js/login.js"></script>
+</body>
+</html>

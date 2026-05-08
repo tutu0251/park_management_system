@@ -1,0 +1,123 @@
+Create a **firmware code for the node** in the park RFID payment system using **nRF24 module** (nRF24L01+) and **ATmega8/ATmega328P MCU** (or similar microcontroller).
+
+**Objective**:
+The node firmware will handle:
+- Communicating with the RFID card reader
+- Sending payment requests to the server (via nRF24 communication)
+- Handling payment responses from the server
+- Sending machine status updates (Online, Offline, Maintenance, Error)
+- Handling incoming "CheckStatus" requests from the server and replying with machine status
+
+### Hardware
+- **MCU**: ATmega8 or ATmega328P
+- **RF Module**: nRF24L01+ (with or without PA/LNA module)
+- **Power Supply**: 3.3V regulated for nRF24L01+, 5V for the MCU
+- **Peripheral**: RFID card reader (with communication over SPI, UART, or I2C)
+- **Communication**: Wireless communication with **nRF24** for sending/receiving data to/from the server.
+
+### Key Functionalities:
+
+1. **Initialize nRF24 Module**:
+   - Set up SPI communication with nRF24L01+.
+   - Set the **RF channel** (choose based on the system configuration).
+   - Set **data rate** and **addressing** for communication.
+   - Set **interrupts** for data transmission/reception.
+   
+2. **Read Card Data**:
+   - Initialize the **RFID reader** (use SPI, UART, or I2C based on the module).
+   - Continuously poll the **card reader** to detect RFID card swipes.
+   - Retrieve **card_id** from the RFID card when swiped.
+
+3. **Send Data to Server**:
+   - Format the packet to send:
+     - `node_id`, `reader_id`, `card_id`, `transaction_id`, `game_id`, `event_type=Swipe`.
+   - Send the **payment request packet** to the server via **nRF24L01+** module.
+   - Wait for **server response**: `Success`, `Fail`, or `Error`.
+
+4. **Receive Server Response**:
+   - Parse the server's response:
+     - If `Success`, show updated credit on the card reader.
+     - If `Fail`, show insufficient credit message.
+     - If `Error`, show error and log the issue.
+   
+5. **Machine Status Monitoring**:
+   - Receive "CheckStatus" requests from the server.
+   - Respond with machine status:
+     - `Online`: Normal status, machine working.
+     - `Maintenance`: Machine is temporarily under repair.
+     - `Offline`: Machine is down or unreachable.
+     - `Error`: Machine has a fault or issue.
+   
+6. **Watchdog Timer**:
+   - Set a watchdog timer to ensure the MCU does not lock up in case of communication failure.
+   - Reset the system or go into a safe mode in case of repeated failures.
+
+### Code Structure:
+
+1. **nRF24 Communication**:
+   - Use SPI to send/receive data to/from the **nRF24L01+ module**.
+   - Set up **TX/RX buffers** for sending and receiving data.
+   - Handle **acknowledgement packets** from the server.
+
+2. **Card Reader Handling**:
+   - Use the **SPI/UART/I2C interface** depending on the RFID reader.
+   - Implement functions to read the **card_id**.
+   - Implement **error handling** in case of failed card reads.
+
+3. **Machine Status Reporting**:
+   - Monitor the state of the machine and periodically send updates.
+   - If `Offline` or `Error` states occur, inform the server.
+   - If `Maintenance` state occurs, wait for server to confirm the machine status.
+
+4. **Main Loop**:
+   - In the main loop, periodically check the **card reader** for new swipes.
+   - If a new card is swiped, send the **Swipe event** to the server.
+   - Wait for the response from the server and update the display accordingly.
+   - Respond to the server’s **CheckStatus** requests.
+
+### Example Firmware Code Snippet (ATmega8/328P with nRF24):
+
+```cpp
+#include <SPI.h>
+#include <nRF24L01.h>
+#include <RF24.h>
+
+RF24 radio(9, 10);  // Pin 9 for CE, Pin 10 for CSN
+const byte address[6] = "00001";  // 5-byte address
+
+void setup() {
+  Serial.begin(9600);
+  radio.begin();
+  radio.setChannel(100);
+  radio.setPALevel(RF24_PA_HIGH);
+  radio.setDataRate(RF24_1MBPS);
+  radio.openWritingPipe(address);
+  radio.openReadingPipe(1, address);
+  radio.startListening();
+}
+
+void loop() {
+  if (radio.available()) {
+    char receivedData[32] = "";
+    radio.read(&receivedData, sizeof(receivedData));
+    
+    // Process received data (e.g., server response)
+    if (strcmp(receivedData, "Success") == 0) {
+      Serial.println("Payment successful");
+      // Update machine status or credit
+    } else if (strcmp(receivedData, "Fail") == 0) {
+      Serial.println("Insufficient credit");
+      // Show error on display
+    }
+  }
+  
+  // Card reader processing logic here...
+  // If card swiped, send Swipe packet
+  if (cardSwiped()) {
+    char packet[32];
+    snprintf(packet, sizeof(packet), "%s,%s,%s,%d,%d,Swipe", node_id, reader_id, card_id, transaction_id, game_id);
+    radio.stopListening();
+    radio.write(&packet, sizeof(packet));
+    radio.startListening();
+  }
+}

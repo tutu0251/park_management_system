@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script>
+    (function () {
+      var p = location.pathname;
+      if (!p.endsWith("/")) {
+        var segments = p.split("/").filter(function (s) {
+          return s.length > 0;
+        });
+        var last = segments[segments.length - 1] || "";
+        if (/\.[^./]+$/.test(last)) {
+          p = p.substring(0, p.lastIndexOf("/") + 1);
+        } else if (segments.length <= 1) {
+          p = p + "/";
+        } else {
+          p = p.substring(0, p.lastIndexOf("/") + 1);
+        }
+      }
+      var b = document.createElement("base");
+      b.href = p;
+      document.head.insertBefore(b, document.head.firstChild);
+    })();
+  </script>
+  <title>User Cards — Park RFID Operations</title>
+  <link rel="stylesheet" href="./css/styles.css" />
+</head>
+<body>
+  <div class="sidebar-overlay" aria-hidden="true"></div>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Main navigation">
+      <div class="sidebar-brand">
+        <div class="title">RFID Operations</div>
+        <div class="subtitle">Indoor / Outdoor Park</div>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="index.html"><span class="nav-icon">▣</span> Dashboard</a>
+        <a href="cards.html" class="active"><span class="nav-icon">▤</span> User Cards</a>
+        <a href="machines.html"><span class="nav-icon">◈</span> Game Machines</a>
+        <a href="transactions.html"><span class="nav-icon">☰</span> Transactions</a>
+        <a href="users.html"><span class="nav-icon">◎</span> User Management</a>
+        <a href="permissions.html"><span class="nav-icon">⎘</span> Permissions</a>
+        <a href="api-docs.html"><span class="nav-icon">⧉</span> Integration API</a>
+      </nav>
+      <div class="sidebar-footer">Mock UI v2 · Auth &amp; RBAC</div>
+    </aside>
+
+    <div class="main-wrap">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button type="button" class="menu-toggle" aria-label="Open menu">☰</button>
+          <span class="topbar-park-name">Riverside Adventure Park</span>
+          <span class="topbar-env">Operations Console</span>
+        </div>
+        <div class="topbar-right">
+          <span class="clock-display" id="live-clock"></span>
+          <span class="system-status">Operational</span>
+          <div class="user-chip-wrap">
+            <button type="button" class="user-chip" id="user-chip-btn" aria-expanded="false" aria-haspopup="true">
+              <span class="avatar" id="user-avatar-initials">—</span>
+              <div>
+                <div class="name" id="user-chip-name">—</div>
+                <div class="role" id="user-chip-role">—</div>
+              </div>
+              <span class="user-chevron" aria-hidden="true">▾</span>
+            </button>
+            <div class="user-menu" id="user-menu" hidden>
+              <div class="user-menu-header" id="user-menu-email"></div>
+              <button type="button" class="user-menu-item" id="menu-change-password">Change password</button>
+              <button type="button" class="user-menu-item danger" id="menu-sign-out">Sign out</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="content">
+        <h1 class="page-title">User card management</h1>
+        <p class="page-desc">Register RFID cards, check out returns at the service counter, and track card status. Card data for this page is stored in your browser (mock database).</p>
+
+        <div class="cards-summary-row" id="cards-summary" aria-live="polite"></div>
+
+        <div id="reissue-hint" class="reissue-banner" hidden>
+          <div>
+            <strong>Cards ready for reissue.</strong>
+            <span class="muted">Physical cards were checked out. Register a <strong>new card ID</strong> when reissuing — credits start fresh.</span>
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-scroll-add-card">Add Card</button>
+        </div>
+
+        <div class="grid-2" id="cards-manage-panels" style="margin-top: 1.25rem">
+          <div class="card" id="add-card-panel">
+            <div class="card-header">
+              <h2 class="card-title">Add / register card</h2>
+            </div>
+            <div class="card-body">
+              <form id="register-form">
+                <div class="form-row">
+                  <label for="reg-card-id">Card ID</label>
+                  <input id="reg-card-id" name="card_id" required placeholder="Scan or type new card ID" autocomplete="off" />
+                </div>
+                <div class="form-row">
+                  <label for="reg-owner">Owner name (optional)</label>
+                  <input id="reg-owner" name="owner" placeholder="Guest or member name" autocomplete="off" />
+                </div>
+                <div class="form-row">
+                  <label for="reg-credit">Opening credit (USD)</label>
+                  <input id="reg-credit" name="credit" type="number" min="0" step="0.01" value="25" />
+                </div>
+                <button type="submit" class="btn btn-primary">Register card</button>
+              </form>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">Check out card</h2>
+            </div>
+            <div class="card-body">
+              <p style="margin: 0 0 0.75rem; font-size: 0.8125rem; color: var(--muted);">Scan the RFID being returned. Remaining balance will be returned to the guest and the card will be marked <span class="badge badge-info">CheckedOut</span> (inactive until reissued with a new ID).</p>
+              <div class="form-row">
+                <label for="checkout-card-id">Card ID</label>
+                <input id="checkout-card-id" type="text" placeholder="Scan card at counter…" autocomplete="off" />
+              </div>
+              <button type="button" class="btn btn-primary" id="btn-checkout-start">Check Out Card</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top: 1.25rem">
+          <div class="card-header">
+            <h2 class="card-title">Search &amp; filters</h2>
+          </div>
+          <div class="card-body">
+            <div class="form-row" style="max-width: 28rem">
+              <label for="search-card">Filter by card ID</label>
+              <input id="search-card" type="search" placeholder="Partial match on card ID…" autocomplete="off" />
+            </div>
+            <div class="form-row" style="max-width: 20rem; margin-top: 0.75rem">
+              <label for="filter-status">Status filter</label>
+              <select id="filter-status">
+                <option value="Active">Active only</option>
+                <option value="all">All statuses</option>
+                <option value="CheckedOut">Checked out only</option>
+                <option value="Inactive">Inactive only</option>
+              </select>
+            </div>
+            <p style="margin: 0.75rem 0 0; font-size: 0.8125rem; color: var(--muted);">Default view shows <strong>active</strong> cards. Use filters to audit checked-out or inactive cards.</p>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top: 1.25rem">
+          <div class="card-header">
+            <h2 class="card-title">Card inventory</h2>
+          </div>
+          <div class="card-body flush">
+            <div class="table-wrap">
+              <table class="data-table" id="cards-table">
+                <thead>
+                  <tr>
+                    <th>Card ID</th>
+                    <th>Owner</th>
+                    <th class="text-right">Credit</th>
+                    <th>Status</th>
+                    <th>Details</th>
+                    <th>Created</th>
+                    <th>Last used</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="modal-title">Modal</h2>
+        <button type="button" class="icon-btn" id="modal-close-btn" aria-label="Close">×</button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-footer" id="modal-footer"></div>
+    </div>
+  </div>
+
+  <script type="module" src="./js/cards.js"></script>
+</body>
+</html>

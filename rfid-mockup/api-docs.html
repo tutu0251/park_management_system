@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script>
+    (function () {
+      var p = location.pathname;
+      if (!p.endsWith("/")) {
+        var segments = p.split("/").filter(function (s) {
+          return s.length > 0;
+        });
+        var last = segments[segments.length - 1] || "";
+        if (/\.[^./]+$/.test(last)) {
+          p = p.substring(0, p.lastIndexOf("/") + 1);
+        } else if (segments.length <= 1) {
+          p = p + "/";
+        } else {
+          p = p.substring(0, p.lastIndexOf("/") + 1);
+        }
+      }
+      var b = document.createElement("base");
+      b.href = p;
+      document.head.insertBefore(b, document.head.firstChild);
+    })();
+  </script>
+  <title>Integration API — Park RFID Operations</title>
+  <link rel="stylesheet" href="./css/styles.css" />
+</head>
+<body>
+  <div class="sidebar-overlay" aria-hidden="true"></div>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Main navigation">
+      <div class="sidebar-brand">
+        <div class="title">RFID Operations</div>
+        <div class="subtitle">Indoor / Outdoor Park</div>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="index.html"><span class="nav-icon">▣</span> Dashboard</a>
+        <a href="cards.html"><span class="nav-icon">▤</span> User Cards</a>
+        <a href="machines.html"><span class="nav-icon">◈</span> Game Machines</a>
+        <a href="transactions.html"><span class="nav-icon">☰</span> Transactions</a>
+        <a href="users.html"><span class="nav-icon">◎</span> User Management</a>
+        <a href="permissions.html"><span class="nav-icon">⎘</span> Permissions</a>
+        <a href="api-docs.html"><span class="nav-icon">⧉</span> Integration API</a>
+      </nav>
+      <div class="sidebar-footer">Mock UI v2 · Auth &amp; RBAC</div>
+    </aside>
+
+    <div class="main-wrap">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button type="button" class="menu-toggle" aria-label="Open menu">☰</button>
+          <span class="topbar-park-name">Riverside Adventure Park</span>
+          <span class="topbar-env">Operations Console</span>
+        </div>
+        <div class="topbar-right">
+          <span class="clock-display" id="live-clock"></span>
+          <span class="system-status">Operational</span>
+          <div class="user-chip-wrap">
+            <button type="button" class="user-chip" id="user-chip-btn" aria-expanded="false" aria-haspopup="true">
+              <span class="avatar" id="user-avatar-initials">—</span>
+              <div>
+                <div class="name" id="user-chip-name">—</div>
+                <div class="role" id="user-chip-role">—</div>
+              </div>
+              <span class="user-chevron" aria-hidden="true">▾</span>
+            </button>
+            <div class="user-menu" id="user-menu" hidden>
+              <div class="user-menu-header" id="user-menu-email"></div>
+              <button type="button" class="user-menu-item" id="menu-change-password">Change password</button>
+              <button type="button" class="user-menu-item danger" id="menu-sign-out">Sign out</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="content">
+        <h1 class="page-title">Integration API (reference)</h1>
+        <p class="page-desc">Contract sketch for third-party systems. All paths are relative to your deployment base URL. Production would enforce RBAC and TLS.</p>
+
+        <div class="rbac-callout">
+          <strong>Your session token</strong> (issued on sign-in in this mock):<br />
+          <code id="api-token-display" class="mono-inline" style="word-break: break-all">—</code>
+          <div style="margin-top: 0.5rem; font-size: 0.75rem">
+            Send as <code>Authorization: Bearer &lt;token&gt;</code> or use OAuth 2.0 client credentials in a real deployment.
+          </div>
+        </div>
+
+        <div class="api-section">
+          <h2>Authentication &amp; sessions</h2>
+          <div class="api-endpoint">
+            <div class="api-endpoint-header">
+              <span class="api-method">POST</span>
+              <span class="api-path">/api/register</span>
+            </div>
+            <div class="api-endpoint-body">Create a user (admin/service scope). New users may be created inactive pending activation.</div>
+          </div>
+          <div class="api-endpoint">
+            <div class="api-endpoint-header">
+              <span class="api-method">POST</span>
+              <span class="api-path">/api/login</span>
+            </div>
+            <div class="api-endpoint-body">Authenticate with email/username and password. Returns session and API token.</div>
+          </div>
+          <div class="api-endpoint">
+            <div class="api-endpoint-header">
+              <span class="api-method">POST</span>
+              <span class="api-path">/api/logout</span>
+            </div>
+            <div class="api-endpoint-body">Invalidate the current session / token.</div>
+          </div>
+        </div>
+
+        <div class="api-section">
+          <h2>User management</h2>
+          <div class="api-endpoint">
+            <div class="api-endpoint-header">
+              <span class="api-method get">GET</span>
+              <span class="api-path">/api/users</span>
+            </div>
+            <div class="api-endpoint-body">List users. <strong>Admin only.</strong></div>
+          </div>
+          <div class="api-endpoint">
+            <div class="api-endpoint-header">
+              <span class="api-method">PUT</span>
+              <span class="api-path">/api/users/{user_id}</span>
+            </div>
+            <div class="api-endpoint-body">Update name, email, role, status. <strong>Admin only.</strong></div>
+          </div>
+          <div class="api-endpoint">
+            <div class="api-endpoint-header">
+              <span class="api-method delete">DELETE</span>
+              <span class="api-path">/api/users/{user_id}</span>
+            </div>
+            <div class="api-endpoint-body">Delete a user. <strong>Admin only.</strong></div>
+          </div>
+        </div>
+
+        <div class="api-section">
+          <h2>Machines</h2>
+          <div class="api-endpoint">
+            <div class="api-endpoint-header">
+              <span class="api-method get">GET</span>
+              <span class="api-path">/api/machines</span>
+            </div>
+            <div class="api-endpoint-body">Fleet list with reader status (Online, Maintenance, Offline, Error).</div>
+          </div>
+          <div class="api-endpoint">
+            <div class="api-endpoint-header">
+              <span class="api-method">POST</span>
+              <span class="api-path">/api/machines/{machine_id}/status</span>
+            </div>
+            <div class="api-endpoint-body">Set operational status. Body: <code>{ "status": "Online" | "Maintenance" | "Offline" | "Error" }</code>. Operators and admins.</div>
+          </div>
+        </div>
+
+        <div class="api-section">
+          <h2>Transactions</h2>
+          <div class="api-endpoint">
+            <div class="api-endpoint-header">
+              <span class="api-method get">GET</span>
+              <span class="api-path">/api/transactions</span>
+            </div>
+            <div class="api-endpoint-body">Query log with filters (date range, card, reader, game, event type, location).</div>
+          </div>
+          <div class="api-endpoint">
+            <div class="api-endpoint-header">
+              <span class="api-method">POST</span>
+              <span class="api-path">/api/transactions</span>
+            </div>
+            <div class="api-endpoint-body">Create a manual adjustment row. <strong>Admin only</strong> in the mock console.</div>
+          </div>
+        </div>
+
+        <div class="api-section">
+          <h2>RFID cards</h2>
+          <div class="api-endpoint">
+            <div class="api-endpoint-header">
+              <span class="api-method get">GET</span>
+              <span class="api-path">/api/cards</span>
+            </div>
+            <div class="api-endpoint-body">List registered cards and balances.</div>
+          </div>
+          <div class="api-endpoint">
+            <div class="api-endpoint-header">
+              <span class="api-method">POST</span>
+              <span class="api-path">/api/cards/{card_id}/checkout</span>
+            </div>
+            <div class="api-endpoint-body">Check out a card; response includes remaining credit to return to the guest.</div>
+          </div>
+          <div class="api-endpoint">
+            <div class="api-endpoint-header">
+              <span class="api-method">POST</span>
+              <span class="api-path">/api/cards/{card_id}/activate</span>
+            </div>
+            <div class="api-endpoint-body">Activate a previously deactivated card (when business rules allow).</div>
+          </div>
+        </div>
+
+        <div class="api-section">
+          <h2>Rate limiting</h2>
+          <div class="card" style="box-shadow: none">
+            <div class="card-body">
+              <p style="margin: 0; font-size: 0.875rem; color: var(--text-secondary); line-height: 1.55">
+                Production APIs should return <code>429 Too Many Requests</code> with a <code>Retry-After</code> header when a client exceeds a sliding window (for example 120 requests per minute per token + IP).
+                Burst traffic from arcade POS integrations should be queued or throttled client-side.
+              </p>
+              <pre class="api-code">HTTP/1.1 429 Too Many Requests
+Retry-After: 42
+Content-Type: application/json
+
+{ "error": "rate_limit_exceeded", "message": "Slow down and retry." }</pre>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script type="module" src="./js/api-docs-page.js"></script>
+</body>
+</html>
