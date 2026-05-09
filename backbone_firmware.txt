@@ -1,0 +1,129 @@
+Create the **backbone firmware** in the park RFID payment system. The backbone node will be responsible for communicating with multiple **RFID card readers** and **server** using **nRF24 modules**.
+
+**Objective**: 
+The backbone node will act as a **gateway** between the **RFID card readers** (client nodes) and the **PC/server**, and it will relay data between the devices, monitor machine status, and ensure smooth communication across the network.
+
+---
+
+### **Key Features for Backbone Node Firmware:**
+
+1. **nRF24 Communication**:
+   - Use the **nRF24L01+** or **nRF24L01+ PA/LNA** for long-range communication.
+   - Set up the **SPI interface** for communication with the nRF24 module.
+   - The backbone node should communicate with the **RFID readers** (client nodes) and forward their messages to the **PC/server**.
+
+2. **Node Addressing**:
+   - Each backbone node will be assigned a unique **node_id**.
+   - The node will communicate on a specific **RF channel** with the clients and server.
+   - Use the **nRF24 addresses** to distinguish between **client nodes** and the **server**.
+
+3. **Message Handling**:
+   - **Messages from Readers**:
+     - When a reader sends data (e.g., card swipe request), the backbone node should forward this message to the **server** for credit validation.
+   - **Messages from Server**:
+     - When the backbone node receives a response from the server (e.g., `Success`, `Fail`, `Error`), it should relay this information back to the appropriate **client node** (RFID reader).
+
+4. **Machine Status Monitoring**:
+   - The backbone node will periodically send **status check requests** to connected **client nodes** to monitor their **machine status** (Online, Maintenance, Offline, Error).
+   - The server will request machine status updates from the backbone node, and the backbone node will relay the machine status accordingly.
+
+5. **Transaction Forwarding**:
+   - The backbone node will forward transaction messages from **client nodes** (RFID readers) to the **server**.
+   - It should handle the following packet types:
+     - **Payment Requests** (e.g., card swipes, credit checks)
+     - **Status Requests** (e.g., CheckStatus)
+     - **Payment Responses** (e.g., Success, Fail, Error)
+
+6. **Data Synchronization**:
+   - Ensure that the data forwarded from the **client nodes** to the **server** is synchronized and reliably transmitted.
+   - Implement **acknowledgment** or **retry mechanisms** in case of communication failures.
+
+---
+
+### **Firmware Code Structure:**
+
+1. **nRF24 Setup**:
+   - Use SPI to configure the **nRF24L01+** module.
+   - Set the **addressing**, **channel**, and **data rate** for communication.
+   - Configure **TX/RX buffers** to send and receive data.
+
+2. **Message Handling**:
+   - Process incoming messages from **client nodes** (RFID readers).
+   - Parse the incoming packets and forward them to the **server** (via nRF24).
+   - Wait for responses from the **server** and forward them to the correct **client node**.
+
+3. **Status Check Loop**:
+   - Periodically send **CheckStatus** requests to **client nodes**.
+   - Parse responses from the client nodes and send them back to the **server**.
+
+4. **Error Handling**:
+   - Include error handling for communication failures (e.g., retries, error messages).
+   - If a machine’s status is **Offline** or **Error**, show a warning in the system logs.
+
+---
+
+### **Sample Firmware Code Snippet for Backbone Node (ATmega8/ATmega328P with nRF24)**
+
+```cpp
+#include <SPI.h>
+#include <nRF24L01.h>
+#include <RF24.h>
+
+RF24 radio(9, 10);  // Pin 9 for CE, Pin 10 for CSN
+const byte address[6] = "00001";  // 5-byte address for communication
+
+void setup() {
+  Serial.begin(9600);
+  radio.begin();
+  radio.setChannel(100); 
+  radio.setPALevel(RF24_PA_HIGH); 
+  radio.setDataRate(RF24_1MBPS);
+  radio.openWritingPipe(address);
+  radio.openReadingPipe(1, address);
+  radio.startListening();
+}
+
+void loop() {
+  // Handle incoming messages from RFID card readers (client nodes)
+  if (radio.available()) {
+    char receivedData[32] = "";
+    radio.read(&receivedData, sizeof(receivedData));
+    
+    // Process the received data (payment request)
+    if (strcmp(receivedData, "Swipe") == 0) {
+      // Forward payment request to server
+      char packet[32];
+      snprintf(packet, sizeof(packet), "node_id=%d, reader_id=%d, event_type=Swipe", node_id, reader_id);
+      radio.stopListening();
+      radio.write(&packet, sizeof(packet));
+      radio.startListening();
+    }
+  }
+
+  // Handle response from the server
+  if (radio.available()) {
+    char serverResponse[32] = "";
+    radio.read(&serverResponse, sizeof(serverResponse));
+
+    // Forward response to the corresponding reader
+    if (strcmp(serverResponse, "Success") == 0) {
+      Serial.println("Payment Successful");
+      // Update the reader display, send response to card reader
+    } else if (strcmp(serverResponse, "Fail") == 0) {
+      Serial.println("Insufficient Credit");
+      // Inform the reader to display insufficient credit message
+    }
+  }
+
+  // Periodically check status of connected machines
+  sendStatusCheckRequest();
+}
+
+// Function to send status check requests to connected readers
+void sendStatusCheckRequest() {
+  char packet[32];
+  snprintf(packet, sizeof(packet), "event_type=CheckStatus");
+  radio.stopListening();
+  radio.write(&packet, sizeof(packet));
+  radio.startListening();
+}

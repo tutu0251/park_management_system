@@ -1,0 +1,17 @@
+#pragma once
+
+// Copy to `backbone_config.local.h` and add `-DBACKBONE_CONFIG_LOCAL` to build_flags.
+
+// #define BACKBONE_RF_CE_PIN 9
+// #define BACKBONE_RF_CSN_PIN 10
+// #define BACKBONE_RF_CHANNEL 100
+
+// Nodes send to the gateway on this address:
+// #define BACKBONE_RF_ADDR_GW_NODE_INIT 'G','W','A','Y','1'
+
+// Server sends to the gateway on this address:
+// #define BACKBONE_RF_ADDR_GW_SERVER_INIT 'G','W','S','V','1'
+
+// Gateway writes to the server using this address:
+// #define BACKBONE_RF_ADDR_SERVER_INIT 'S','E','R','V','1'
+
