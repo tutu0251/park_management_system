@@ -1,22 +1,22 @@
 // -----------------------------------------------------------------------------
-// backbone_config.cpp — runtime storage for nRF24 five-byte addresses
+// backbone_config.cpp — storage for nRF24 five-byte addresses
 // -----------------------------------------------------------------------------
-// Headers expose `cfg::ADDR_*` as extern arrays; this TU defines them so the
-// linker resolves symbols. Values come from macro init lists in
-// backbone_config.h (override via backbone_config.local.h if used).
+// The header declares each ADDR_* as `extern const uint8_t[5]`; this TU
+// provides the single definition required by ODR. Initializer macros come
+// from backbone_config.h (overridable via backbone_config.local.h).
 // -----------------------------------------------------------------------------
 
-#include "backbone_config.h"  // BACKBONE_RF_ADDR_*_INIT macros and cfg namespace
+#include "backbone_config.h"
 
-namespace cfg {
+namespace bbcfg {
 
-// Address nodes use as their TX destination (gateway "node" pipe).
+// Reader nodes write SWIPE_REQ / STATUS_PUSH / STATUS_RESP to this address.
 const uint8_t ADDR_GW_NODE[5] = {BACKBONE_RF_ADDR_GW_NODE_INIT};
 
-// Address the server uses to reach the gateway on a separate RX pipe.
+// Gateway writes downlink (PAY_RESP / CHECK_STATUS_REQ) to this address.
 const uint8_t ADDR_GW_SERVER[5] = {BACKBONE_RF_ADDR_GW_SERVER_INIT};
 
-// Address the backbone opens as default TX when sending toward the server.
+// Backbone writes uplink toward the gateway using this address.
 const uint8_t ADDR_SERVER[5] = {BACKBONE_RF_ADDR_SERVER_INIT};
 
-}  // namespace cfg
+}  // namespace bbcfg
