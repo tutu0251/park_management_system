@@ -1,3 +1,6 @@
+// -----------------------------------------------------------------------------
+// node_protocol.cpp — pack/unpack helpers (backbone build; same logic as node)
+// -----------------------------------------------------------------------------
 #include "node_protocol.h"
 
 #include <string.h>
@@ -105,4 +108,3 @@ const char* pay_result_name(PayResult r) {
 }
 
 }  // namespace proto
-

@@ -1,9 +1,11 @@
 #pragma once
-
-// Air protocol for nRF24 (fixed 32-byte frames, zero padding). All multi-byte
-// integers are little-endian (ATmega328 native).
-//
-// This is shared with `node_firmware/` so the backbone can parse/forward frames.
+// =============================================================================
+// node_protocol.h — binary layout of nRF24 payloads (shared with node_firmware)
+// =============================================================================
+// Contract: every on-air payload is exactly 32 bytes; tail zero-padded.
+// Multi-byte integers are little-endian (ATmega328 native). Any change must be
+// mirrored in node_firmware/include/node_protocol.h and server-side code.
+// =============================================================================
 
 #include <stddef.h>
 #include <stdint.h>
@@ -13,11 +15,11 @@ namespace proto {
 constexpr uint8_t PAYLOAD_MAX = 32;
 
 enum MsgType : uint8_t {
-  SWIPE_REQ = 0x01,
-  CHECK_STATUS_REQ = 0x10,
-  STATUS_PUSH = 0x11,
-  PAY_RESP = 0x80,
-  STATUS_RESP = 0x81,
+  SWIPE_REQ = 0x01,         // Card tap from node; backbone forwards to server.
+  CHECK_STATUS_REQ = 0x10,  // Poll command from backbone or server relay path.
+  STATUS_PUSH = 0x11,       // Proactive two-byte status from node.
+  PAY_RESP = 0x80,          // Billing outcome from server to backbone to node.
+  STATUS_RESP = 0x81,       // Answer to CHECK_STATUS_REQ with MachineStatus.
 };
 
 enum PayResult : uint8_t {
@@ -70,4 +72,3 @@ const char* machine_status_name(MachineStatus st);
 const char* pay_result_name(PayResult r);
 
 }  // namespace proto
-
