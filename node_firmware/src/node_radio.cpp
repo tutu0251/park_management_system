@@ -1,107 +1,143 @@
-// -----------------------------------------------------------------------------
-// node_radio.cpp — nRF24L01+ bring-up and framed TX/RX for reader ↔ backbone
-// -----------------------------------------------------------------------------
+// =============================================================================
+// node_radio.cpp — RF24 bring-up, Shockburst policy, retry + jitter helpers
+// =============================================================================
 //
-// ADDRESSING MODEL (must match backbone_firmware + server sketches)
-// -----------------------------------------------------------------
-// - Writing pipe (TX): node_cfg::ADDR_GW_NODE → default backbone RX pipe that
-//   collects reader uplinks (logical name "GWAY1" in macros).
-// - Reading pipe 1 (RX): unique per reader — node_cfg::node_listen_addr(...):
-//   ASCII bytes 'N','O','D','E', plus '0'+node_id (supports ids 1..9 out of box).
+// AUTO ACK AND Shockburst RETRIES (WHY BOTH LAYERS EXIST)
+// --------------------------------------------------------
+// Layer A — RF24 hardware auto-ACK:
+//   Many radios share 2.4 GHz. Short ACK frames confirm that THIS addressed packet
+//   survived the immediate collision window and entered the peer’s FIFO. Without auto
+//   ACK, application firmware would need its own stop-and-wait ACK packets, costing
+//   airtime and flash complexity.
 //
-// FRAME WIDTH
-// -----------
-// nRF24 ShockBurst payloads are configured as fixed 32 bytes (proto::PAYLOAD_MAX).
-// Short logical messages (e.g. 2-byte STATUS_PUSH) are copied then zero-padded so
-// CRC and backbone parsers always see a full buffer — mirrors gateway-side memcpy.
+// Layer B — RF24 setRetries(delay, count):
+//   Transient bursts (wifi/microwave/multipath) lose packets. A bounded automatic
+//   retransmit schedule recovers without involving billing logic — still cheap on-air
+//   because payloads are only 32 bytes (see PAYLOAD_MAX rationale).
 //
-// RELIABILITY LAYERS
-// ------------------
-// 1) Hardware auto-ACK + RF24::setRetries(delay_count, retry_count) — handles
-//    transient collisions at the ShockBurst layer.
-// 2) Application retries in node_radio_send_frame(): NODE_RADIO_APP_TX_RETRIES
-//    attempts with pseudo-random microsecond backoff between attempts to reduce
-//    synchronized repeated collisions when many nodes contend.
+// Layer C — NODE_RADIO_APP_TX_RETRIES in node_radio_send_frame():
+//   If the hardware retry budget is exhausted, we STILL may want another whole WRITE
+//   attempt after a pseudo-random pause so colliding neighbor nodes do not lock-step
+//   into perpetual collisions (“retry storm synchronization”).
 //
-// SRAM NOTE
-// ---------
-// RF24 owns internal driver buffers; we keep only one static TX staging frame
-// here (32 bytes) plus the RF24 object itself — tuned for ATmega8's 1 KiB RAM.
+// WHY RANDOM BACKOFF (prng16)
+// ---------------------------
+// Fixed delays cause synchronized retransmissions when many devices fail together.
+// Jitter separates transmit edges in time, reducing repeated collisions.
 //
-// -----------------------------------------------------------------------------
+// WHY LIGHWEIGHT PRNG (NOT rand() / crypto RNG)
+// ---------------------------------------------
+// AVR libc PRNG pulls in globals and codeSize we do not need. We only require
+// uncorrelated-enough spacing for milliseconds-scale backoff — not cryptographic keys.
+//
+// SPI BUS SHARING
+// ---------------
+// RF24 holds CSN low only during byte transfers; ensure no other SPI slave shares the
+// bus without coordinated chip-select discipline.
+//
+// =============================================================================
+
+#include "node_radio.h"
 
 #include <Arduino.h>
-#include <RF24.h>
 #include <SPI.h>
+#include <RF24.h>
+
 #include <string.h>
 
 #include "node_config.h"
-#include "node_radio.h"
 
 static RF24 g_radio(node_cfg::RF_CE_PIN, node_cfg::RF_CSN_PIN);
-static uint8_t g_node_listen[5];
 
-// Tiny LFSR-style mix — not cryptographic; only spreads retry jitter in time.
-static uint16_t prng16() {
-  static uint16_t s = 0xACE1u;
-  uint16_t x = s;
-  x ^= static_cast<uint16_t>(x << 7);
-  x ^= static_cast<uint16_t>(x >> 9);
-  x ^= static_cast<uint16_t>(x << 8);
-  s = x;
-  return x;
+/// PRNG state lives in static SRAM (not stack) to keep call frames tiny on ATmega8.
+static uint16_t g_prng = 0xBEEF;
+
+uint16_t prng16(void) {
+  // Classic xorshift16 — a few XOR/shift ops: fast, fixed time, no division.
+  g_prng ^= static_cast<uint16_t>(g_prng << 7);
+  g_prng ^= static_cast<uint16_t>(g_prng >> 9);
+  g_prng ^= static_cast<uint16_t>(g_prng << 8);
+  return g_prng;
 }
 
-bool node_radio_begin() {
+void prng_seed(uint16_t seed) {
+  if (seed) g_prng ^= seed;
+}
+
+static void pad_payload(uint8_t* dst, uint8_t logical_len) {
+  if (logical_len >= proto::PAYLOAD_MAX) return;
+  memset(dst + logical_len, 0, proto::PAYLOAD_MAX - logical_len);
+}
+
+bool node_radio_begin(void) {
   if (!g_radio.begin()) return false;
 
-  // RF band index (not MHz directly); must match backbone + billing peer radios.
+  // Channel index must match backbone deployment (see NODE_RF_CHANNEL build flag).
   g_radio.setChannel(node_cfg::RF_CHANNEL);
-  g_radio.setPALevel(RF24_PA_HIGH);
+
+  // PA level conservative by default — upgrade after benching supply and antenna return loss.
+  g_radio.setPALevel(RF24_PA_LOW);
+
+  // 1 Mbps is a good balance of range vs packet duration (shorter packets => fewer collisions).
   g_radio.setDataRate(RF24_1MBPS);
-  // Auto-retry timing: (delay+1)*250µs between retries, retry_count+1 attempts.
-  g_radio.setRetries(5, 15);
-  g_radio.setCRCLength(RF24_CRC_16);
+
+  // CRC enabled by default in RF24 driver — protects against random noise acceptance.
+
+  // Hardware retry timing + count: tuned per park noise; adjust empirically if needed.
+  // RF24 encodes delay as (252 + 86*delay) µs between retries; count caps attempts.
+  g_radio.setRetries(7, 15);
+
+  // Fixed 32-byte FIFO width simplifies memcpy boundaries everywhere in firmware.
   g_radio.setPayloadSize(proto::PAYLOAD_MAX);
+
+  // Dynamic payload widths add IRQ/FIFO complexity — we avoid them on ATmega8 builds.
+
+  // Auto-ACK is the cornerstone of Shockburst reliability — keep it enabled unless an
+  // exotic hub topology explicitly requires lossy broadcast (not this product).
   g_radio.setAutoAck(true);
 
-  node_cfg::node_listen_addr(g_node_listen, node_cfg::kNodeId);
-  // Pipe 0 is often reserved for TX addressing on nRF24; pipe 1 is a typical choice
-  // for first RX address with RF24 Arduino wrapper defaults used elsewhere in repo.
-  g_radio.openReadingPipe(1, g_node_listen);
+  // Writing pipe — uplink toward backbone concentrator address.
   g_radio.openWritingPipe(node_cfg::ADDR_GW_NODE);
+
+  // Reading pipe — unique per NODE_ID so backbone can target one cabinet safely.
+  uint8_t rxaddr[5];
+  node_cfg::node_listen_addr(rxaddr, node_cfg::kNodeId);
+  g_radio.openReadingPipe(1, rxaddr);
+
+  // Disable pipe 0 RX except when RF24 driver toggles internally — reduces stray accepts.
+  g_radio.stopListening();
   g_radio.startListening();
   return true;
 }
 
-bool node_radio_send_frame(const uint8_t* payload, uint8_t len) {
-  // Static staging avoids a large stack allocation in callers on tiny SRAM MCUs.
-  static uint8_t frame[proto::PAYLOAD_MAX];
+bool node_radio_send_frame(const uint8_t* data, uint8_t len) {
+  if (!data || len == 0 || len > proto::PAYLOAD_MAX) return false;
 
-  if (!payload || len == 0 || len > proto::PAYLOAD_MAX) return false;
-  memcpy(frame, payload, len);
-  if (len < proto::PAYLOAD_MAX) memset(frame + len, 0, proto::PAYLOAD_MAX - len);
+  uint8_t tmp[proto::PAYLOAD_MAX];
+  memcpy(tmp, data, len);
+  pad_payload(tmp, len);
 
-  for (uint8_t attempt = 0; attempt < NODE_RADIO_APP_TX_RETRIES; ++attempt) {
-    // First attempt starts immediately; later attempts wait pseudo-random µs.
-    if (attempt) {
-      const uint16_t r = prng16();
-      delayMicroseconds(250U + (r & 0x7FFU));
-    }
+  g_radio.stopListening();
 
-    // RF24 requires stopListening() before write(); restore RX afterward so we do
-    // not miss downlink PAY_RESP / polls during sustained TX bursts.
-    g_radio.stopListening();
-    g_radio.openWritingPipe(node_cfg::ADDR_GW_NODE);
-    const bool ok = g_radio.write(frame, proto::PAYLOAD_MAX);
-    g_radio.startListening();
-    if (ok) return true;
+  bool ok = false;
+  for (uint8_t attempt = 0; attempt <= NODE_RADIO_APP_TX_RETRIES; ++attempt) {
+    ok = g_radio.write(tmp, proto::PAYLOAD_MAX);
+    if (ok) break;
+
+    // Post-hardware-retry cooldown with pseudo-random component (microseconds scale).
+    const uint16_t r = prng16();
+    delayMicroseconds(300U + (r & 0x3FFU));
+
+    // Tiny millisecond-grade jitter as well — separates whole WRITE attempts from peers.
+    delay(1U + (uint8_t)((r >> 8) & 0x07U));
   }
-  return false;
+
+  g_radio.startListening();
+  return ok;
 }
 
-bool node_radio_try_recv(uint8_t out32[proto::PAYLOAD_MAX]) {
+bool node_radio_try_recv(uint8_t out[proto::PAYLOAD_MAX]) {
   if (!g_radio.available()) return false;
-  g_radio.read(out32, proto::PAYLOAD_MAX);
+  g_radio.read(out, proto::PAYLOAD_MAX);
   return true;
 }
