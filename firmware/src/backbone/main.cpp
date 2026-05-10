@@ -10,9 +10,11 @@
 //
 // =============================================================================
 
+// millis(), analogRead, randomSeed — timing + entropy for backoff consistency with gateway/node.
 #include <Arduino.h>
 
 #if defined(__AVR__)
+// Watchdog control — backbone must reset if SPI/radio hangs.
 #include <avr/wdt.h>
 #endif
 
@@ -23,6 +25,7 @@
 
 namespace {
 
+// One RX scratch buffer — router forwards same bytes without extra copy.
 uint8_t g_rx_frame[proto::PAYLOAD_MAX];
 
 bool g_radio_alive = false;

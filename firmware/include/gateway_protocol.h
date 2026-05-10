@@ -1,3 +1,4 @@
+// Include guard for headers that include protocol helpers from multiple TUs.
 #pragma once
 // =============================================================================
 // gateway_protocol.h — bridge between human-readable UART telemetry and binary RF structs
@@ -14,10 +15,13 @@
 //
 // =============================================================================
 
+// GwPcCommand fields use uint16/uint32 — sized integers from PC parser.
 #include <stdint.h>
 
+// Shared opcode constants + packed structs (`SwipeReqPacked`, etc.).
 #include "park_rf_protocol.h"
 
+// Forward declaration — full definition lives in gateway_serial.h.
 struct GwPcCommand;
 
 namespace proto {

@@ -22,8 +22,10 @@
 //
 // =============================================================================
 
+// Router statistics types + forwarding entry points.
 #include "backbone_router.h"
 
+// memset for stats reset.
 #include <string.h>
 
 #include "backbone_config.h"
@@ -54,6 +56,7 @@ void backbone_router_begin(void) {
 
 bool backbone_router_handle_uplink(const uint8_t frame32[32]) {
   if (!frame32) return false;
+  // Blind relay — billing semantics live on gateway/PC; backbone preserves bytes.
   if (backbone_radio_send_to_server(frame32)) {
     ++g_stats.uplink_forwarded;
     on_tx_ok();

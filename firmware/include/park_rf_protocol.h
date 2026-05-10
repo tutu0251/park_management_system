@@ -1,3 +1,4 @@
+// Include guard — all three MCU roles must compile identical struct layouts from this file.
 #pragma once
 // =============================================================================
 // park_rf_protocol.h — SINGLE SOURCE OF TRUTH for on-air binary frames (32 B max)
@@ -26,11 +27,14 @@
 //
 // =============================================================================
 
+// size_t for buffer capacity parameters on builders.
 #include <stddef.h>
+// Exact-width integers for packed structs — endianness documented in banner above.
 #include <stdint.h>
 
 namespace proto {
 
+// Nordic Shockburst upper bound enforced everywhere RF24 is used.
 constexpr uint8_t PAYLOAD_MAX = 32;
 
 enum MsgType : uint8_t {

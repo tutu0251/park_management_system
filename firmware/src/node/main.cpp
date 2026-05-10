@@ -22,8 +22,11 @@
 //
 // =============================================================================
 
+// millis(), delay — timing for watchdog-friendly waits and periodic pushes.
 #include <Arduino.h>
+// Watchdog — reader blocks briefly during payment wait loop.
 #include <avr/wdt.h>
+// memcmp/memcpy on pending swipe credential snapshots.
 #include <string.h>
 
 #include "node_config.h"
@@ -37,7 +40,9 @@
 
 namespace {
 
+// Separate RX scratch — drained in loop() without clobbering TX staging.
 uint8_t g_rf_rx[proto::PAYLOAD_MAX];
+// Shared builder buffer for SWIPE_REQ, STATUS_PUSH, STATUS_RESP frames.
 uint8_t s_rf_tx[proto::PAYLOAD_MAX];
 
 proto::MachineStatus g_machine_status = proto::STATUS_ONLINE;
@@ -72,6 +77,7 @@ static bool rf_push_status(proto::MachineStatus st) {
 static void set_machine_status(proto::MachineStatus st) {
   if (st == g_machine_status) return;
   g_machine_status = st;
+  // Immediate RF heartbeat — remote dashboards observe MODE transitions quickly.
   (void)rf_push_status(g_machine_status);
 }
 
@@ -254,6 +260,7 @@ void setup(void) {
 
   (void)rf_push_status(g_machine_status);
 
+  // First periodic push deadline — periodic_status_push() adds jitter thereafter.
   g_next_status_tick = millis() + NODE_STATUS_PUSH_MS;
 }
 
@@ -273,6 +280,7 @@ void loop(void) {
   if (evt == READER_EVT_MODE) {
     set_machine_status(mode);
   } else if (evt == READER_EVT_SWIPE) {
+    // Blocks inside send_swipe until PAY_RESP or timeout — watch pet inside wait loop.
     (void)send_swipe(card, card_len);
   }
 

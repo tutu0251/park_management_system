@@ -15,6 +15,7 @@
 //
 // =============================================================================
 
+// Opcodes, packed structs, and serializer prototypes shared by node/backbone/gateway.
 #include "park_rf_protocol.h"
 
 #include <string.h>
@@ -66,11 +67,13 @@ bool parse_rx(const uint8_t* buf, size_t len, PayRespPacked* pay_out, bool* got_
       if (len < sizeof(PayRespPacked)) return false;
       if (pay_out) {
         memcpy(pay_out, buf, sizeof(PayRespPacked));
+        // Clamp illegal enum values so UART layer never sees undefined PayResult.
         if (pay_out->event_type > PAY_ERROR) pay_out->event_type = PAY_ERROR;
       }
       return true;
     }
     case CHECK_STATUS_REQ:
+      // Reader ignores routing tail bytes — opcode alone triggers fast STATUS_RESP.
       if (got_check_status) *got_check_status = true;
       return true;
 

@@ -1,3 +1,4 @@
+// Include guard — parsed command struct is referenced from gateway_protocol too.
 #pragma once
 // =============================================================================
 // gateway_serial.h — PC-side UART command decoder for the USB gateway MCU
@@ -16,6 +17,7 @@
 //
 // =============================================================================
 
+// Field widths mirror RF structs — explicit sizes avoid Arduino `int` ambiguity.
 #include <stdint.h>
 
 /// Parsed representation of one logical PC command after successful line decode.

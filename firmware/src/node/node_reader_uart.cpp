@@ -29,6 +29,7 @@
 //
 // =============================================================================
 
+// Payment-terminal line parser + RESULT emitter.
 #include "node_reader_uart.h"
 
 #include <Arduino.h>
@@ -90,6 +91,7 @@ static uint8_t dispatch_complete_line(uint8_t card_id[8], uint8_t* card_id_len,
   if (strncmp(s_line, "SWIPE,", 6) == 0) {
     const char* hex = s_line + 6;
     if (parse_hex_payload(hex, card_id, card_id_len)) return READER_EVT_SWIPE;
+    // Visible fault path — staff sees terminal error instead of silent ignore.
     node_reader_uart_send_result(proto::PAY_ERROR, 0);
     return READER_EVT_NONE;
   }
@@ -149,6 +151,7 @@ uint8_t node_reader_uart_poll(uint8_t card_id[8], uint8_t* card_id_len,
     if (s_len < NODE_RFID_LINE_MAX) {
       s_line[s_len++] = c;
     } else {
+      // Mark overflow — entire line dropped on terminating LF.
       s_overflow = true;
     }
   }

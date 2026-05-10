@@ -45,12 +45,17 @@
 //
 // =============================================================================
 
+// Declares GwPcCommand + public UART parser API implemented in this file.
 #include "gateway_serial.h"
 
+// Serial.read/available/print — interaction with USB-UART bridge on gateway MCU.
 #include <Arduino.h>
+// `strtoul` for bounded decimal parsing without sscanf flash cost.
 #include <stdlib.h>
+// `strcmp`, `strchr`, `strlen`, `memmove`, `memset` — line parsing without heap.
 #include <string.h>
 
+// Only needed here for `gw_serial_print_banner` reading numeric gateway id constant.
 #include "gateway_config.h"
 
 namespace {
@@ -69,8 +74,10 @@ uint8_t g_len;
 
 // ----- Tiny string utilities -------------------------------------------------
 
+// Lexicographic compare helper keeps token checks readable vs strcmp boilerplate.
 static bool streq(const char* a, const char* b) { return strcmp(a, b) == 0; }
 
+// Treat common whitespace as ignorable around comma-separated tokens.
 static bool is_space(char c) { return c == ' ' || c == '\t' || c == '\r' || c == '\n'; }
 
 // Trim leading/trailing ASCII whitespace in-place so " TX " still parses as TX after split.
@@ -82,6 +89,7 @@ static void trim_inplace(char* s) {
   }
   size_t i = 0;
   while (s[i] && is_space(s[i])) ++i;
+  // Compact trimmed prefix toward buffer start — preserves terminating NUL.
   if (i > 0) memmove(s, s + i, strlen(s + i) + 1);
 }
 
@@ -101,6 +109,7 @@ static bool parse_u16(const char* s, uint16_t* out) {
   if (!s || !*s || !out) return false;
   char* end = nullptr;
   unsigned long v = strtoul(s, &end, 10);
+  // Reject empty scan or overflow past 16-bit destination.
   if (end == s || v > 65535UL) return false;
   *out = static_cast<uint16_t>(v);
   return true;
@@ -117,6 +126,7 @@ static bool parse_u32(const char* s, uint32_t* out) {
 
 // ----- Hex UID parser (matches node_reader_uart expectations) -----------------
 
+// Returns 0–15 for valid hex digit or -1 for illegal characters.
 static int hex_nibble(char c) {
   if (c >= '0' && c <= '9') return static_cast<uint8_t>(c - '0');
   if (c >= 'A' && c <= 'F') return static_cast<uint8_t>(10 + (c - 'A'));
@@ -210,8 +220,10 @@ static bool parse_line_tokens(char* line, GwPcCommand* cmd) {
   if (!comma) return false;
   *comma = '\0';
   trim_inplace(p);
+  // First CSV cell must be literal verb `TX` — distinguishes future protocol versions.
   if (!streq(p, "TX")) return false;
 
+  // Everything after first comma is zero or more `key=value` pairs.
   p = comma + 1;
   while (*p) {
     comma = strchr(p, ',');
@@ -236,6 +248,7 @@ static bool parse_line_tokens(char* line, GwPcCommand* cmd) {
       } else if (streq(key, "type_id")) {
         copy_type_tag(val, cmd->type_tag);
       } else if (streq(key, "event_type")) {
+        // Unknown payment verbs abort the line — prevents silent misroutes.
         if (!parse_event_type(val, cmd)) return false;
       }
     }
@@ -249,6 +262,7 @@ static bool parse_line_tokens(char* line, GwPcCommand* cmd) {
 
 }  // namespace
 
+// Reset UART reassembly — safe to call multiple times (e.g., after watchdog).
 void gw_serial_begin(void) { g_len = 0; }
 
 void gw_serial_print_banner(void) {
@@ -260,6 +274,7 @@ void gw_serial_print_banner(void) {
 bool gw_serial_drain_command(GwPcCommand* out_cmd) {
   if (!out_cmd) return false;
 
+  // Drain at most what arrived since last call — cooperative multitasking with RF loop.
   while (Serial.available() > 0) {
     const int c = Serial.read();
     if (c < 0) break;
@@ -283,6 +298,7 @@ bool gw_serial_drain_command(GwPcCommand* out_cmd) {
       return true;
     }
 
+    // Mid-line overflow — discard partial command; host must resend entire line.
     if (g_len + 1 >= GW_SERIAL_LINE_MAX) {
       g_len = 0;
       continue;
@@ -293,6 +309,7 @@ bool gw_serial_drain_command(GwPcCommand* out_cmd) {
 }
 
 void gw_serial_print_err_tx_failed(const GwPcCommand* cmd) {
+  // Mirrors ACK columns so log parsers can join success/failure rows by IDs.
   Serial.print(F("ERR,node_id="));
   Serial.print(cmd ? cmd->node_id : 0);
   Serial.print(F(",reader_id="));

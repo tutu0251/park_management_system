@@ -25,8 +25,10 @@
 //
 // =============================================================================
 
+// PRNG + RF24 façade declarations for reader firmware.
 #include "node_radio.h"
 
+// delayMicroseconds, delay — inter-attempt spacing.
 #include <Arduino.h>
 #include <SPI.h>
 #include <RF24.h>
@@ -61,6 +63,7 @@ bool node_radio_begin(void) {
   g_radio.setChannel(node_cfg::RF_CHANNEL);
   g_radio.setPALevel(RF24_PA_LOW);
   g_radio.setDataRate(RF24_1MBPS);
+  // Matches historical node tuning — keep aligned with backbone retry philosophy.
   g_radio.setRetries(7, 15);
   g_radio.setPayloadSize(proto::PAYLOAD_MAX);
   g_radio.setAutoAck(true);
@@ -86,6 +89,7 @@ bool node_radio_send_frame(const uint8_t* data, uint8_t len) {
   g_radio.stopListening();
 
   bool ok = false;
+  // Total tries = NODE_RADIO_APP_TX_RETRIES + 1 — consistent with backbone tx_blocking loop style.
   for (uint8_t attempt = 0; attempt <= NODE_RADIO_APP_TX_RETRIES; ++attempt) {
     ok = g_radio.write(tmp, proto::PAYLOAD_MAX);
     if (ok) break;
