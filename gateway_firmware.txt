@@ -1,0 +1,255 @@
+Create firmware for the nRF24 gateway that connects to the PC through USB serial.
+
+IMPORTANT:
+
+* Save this firmware inside the folder:
+  gateway_firmware
+* MCU MUST be:
+  ATmega8
+* Optimize the firmware for ATmega8 limitations:
+
+  * only 1 KB SRAM
+  * low flash memory
+  * avoid dynamic allocation
+  * avoid STL
+  * use fixed-size buffers
+  * keep stack usage small
+* This gateway communicates with BACKBONE NODES, not directly with reader nodes.
+* Reader nodes communicate with backbone nodes.
+* Backbone nodes relay packets to the gateway.
+* Gateway communicates with the PC/server through USB serial.
+
+Architecture:
+
+PC/server
+↕ USB serial
+Gateway MCU (ATmega8)
+↕ SPI
+nRF24L01+ PA/LNA
+↕ wireless
+Backbone nodes
+↕ wireless
+Reader nodes / game machines
+
+Hardware:
+
+* MCU: ATmega8
+* RF module: nRF24L01+ PA/LNA
+* PC connection: USB serial / virtual COM port
+* Stable 3.3V regulator required for nRF24
+* Use hardware SPI of ATmega8
+
+Main firmware requirements:
+
+1. Initialize hardware
+
+* Initialize Serial at 115200 baud
+* Initialize SPI
+* Initialize nRF24
+* Set RF channel
+* Set data rate
+* Set PA level
+* Enable auto ACK
+* Configure retries
+* Open gateway RX address
+* Start listening
+
+2. Receive packets from backbone nodes
+   The gateway receives packets forwarded by backbone nodes and forwards them to the PC over USB serial.
+
+The gateway does NOT communicate directly with reader nodes.
+
+Incoming packet types from backbone nodes:
+
+Payment request packet:
+node_id, reader_id, card_id, transaction_id, game_id, type_id, event_type=Swipe
+
+Machine status packet:
+node_id, reader_id, game_id, type_id, event_type=Online
+node_id, reader_id, game_id, type_id, event_type=Maintenance
+node_id, reader_id, game_id, type_id, event_type=Offline
+node_id, reader_id, game_id, type_id, event_type=Error
+
+3. Send packets from PC/server to backbone nodes
+   The gateway reads commands from the PC through USB serial and sends them wirelessly to the correct backbone node.
+
+The backbone node will then relay the packet to the reader node.
+
+Outgoing packet types:
+
+Payment response packet:
+node_id, reader_id, card_id, transaction_id, credit_remain, event_type=Success
+node_id, reader_id, card_id, transaction_id, credit_remain, event_type=Fail
+node_id, reader_id, card_id, transaction_id, credit_remain, event_type=Error
+
+Status check packet:
+node_id, reader_id, game_id, type_id, event_type=CheckStatus
+
+4. USB serial protocol
+   Use lightweight line-based serial messages between gateway and PC.
+
+Example gateway output to PC:
+RX,node_id=12,reader_id=45,card_id=A1B2C3D4,transaction_id=103,game_id=7,type_id=T003,event_type=Swipe
+
+Example PC command to gateway:
+TX,node_id=12,reader_id=45,card_id=A1B2C3D4,transaction_id=103,credit_remain=2500,event_type=Success
+
+Example status check command:
+TX,node_id=12,reader_id=45,game_id=7,type_id=T003,event_type=CheckStatus
+
+5. Backbone node routing
+
+* Gateway communicates with backbone nodes only.
+* Use node_id to determine which backbone node should receive the packet.
+* Backbone nodes handle forwarding to reader nodes.
+* Gateway does not manage reader node addressing directly.
+
+6. Reliability and retries
+
+* Use RF24 auto ACK and retries
+* Add random backoff before retransmission
+* If transmission fails repeatedly:
+
+  * report error to PC
+  * keep gateway alive
+
+Example:
+ERR,node_id=12,reader_id=45,transaction_id=103,reason=TX_FAILED
+
+7. Packet design
+   Use compact binary nRF24 payloads with maximum 32 bytes.
+
+Create enum packet/message types:
+
+* MSG_SWIPE
+* MSG_PAY_RESULT
+* MSG_CHECK_STATUS
+* MSG_STATUS_REPORT
+* MSG_ERROR
+
+Use fixed-size binary structs only.
+
+Payment request struct:
+
+* msg_type
+* node_id
+* reader_id
+* card_id
+* transaction_id
+* game_id
+* type_id
+
+Payment response struct:
+
+* msg_type
+* node_id
+* reader_id
+* card_id
+* transaction_id
+* credit_remain
+* result_type
+
+Status packet struct:
+
+* msg_type
+* node_id
+* reader_id
+* game_id
+* type_id
+* status
+
+8. Gateway main loop
+   The loop should:
+
+* reset watchdog
+* check radio RX
+* parse packet from backbone node
+* print parsed packet to PC serial
+* check Serial for PC commands
+* parse command
+* build binary packet
+* send packet to proper backbone node
+* print ACK/ERR status to PC
+
+9. ATmega8 optimization requirements
+   IMPORTANT:
+
+* Minimize SRAM usage aggressively
+* No String class
+* No STL
+* No malloc/new
+* No large arrays
+* Use static/fixed buffers
+* Avoid recursion
+* Use PROGMEM where useful
+* Keep RF payload buffers small
+* Reuse packet buffers
+* Keep serial parsing lightweight
+* Prefer uint8_t over int where possible
+
+10. Watchdog and stability
+
+* Enable watchdog timer
+* Use non-blocking logic
+* Add radio timeout handling
+* Recover from radio failures
+* Keep gateway responsive even under packet loss
+
+11. File organization
+    Create the firmware inside:
+
+gateway_firmware/
+
+Suggested structure:
+
+gateway_firmware/
+├── src/
+│   ├── main.cpp
+│   ├── gateway_radio.cpp
+│   ├── gateway_serial.cpp
+│   ├── gateway_protocol.cpp
+│
+├── include/
+│   ├── gateway_config.h
+│   ├── gateway_radio.h
+│   ├── gateway_serial.h
+│   ├── gateway_protocol.h
+│
+├── platformio.ini
+
+12. PlatformIO configuration
+    Configure specifically for ATmega8.
+
+Use:
+
+* platform = atmelavr
+* framework = arduino
+* board = ATmega8
+
+Configure correct upload speed and serial monitor speed.
+
+13. Configuration
+    In gateway_config.h define:
+
+* gateway_id
+* RF_CHANNEL
+* RF_CE_PIN
+* RF_CSN_PIN
+* SERIAL_BAUD
+* RF payload size
+* retry count
+* retry delay
+* backbone address base
+* gateway RX address
+
+14. Output
+    Generate:
+
+* full compilable firmware code
+* PlatformIO-compatible project
+* comments explaining the flow
+* low-memory implementation optimized for ATmega8
+* Arduino-style C++
+* compatible with RF24 library
+* robust serial parser
+* reliable gateway-to-backbone communication
