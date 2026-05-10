@@ -1,4 +1,2 @@
 /.pio/*
-/node_firmware/.pio
-/backbone_firmware/.pio
-/gateway_firmware/.pio
+/firmware/.pio

@@ -1,0 +1,8 @@
+#pragma once
+
+// Copy to gateway_config.local.h (untracked) and add -DGATEWAY_CONFIG_LOCAL to build_flags.
+
+// #define GATEWAY_ID 1
+// #define GATEWAY_RF_CE_PIN 2
+// #define GATEWAY_RF_CSN_PIN 4
+// #define GATEWAY_RF_CHANNEL 100

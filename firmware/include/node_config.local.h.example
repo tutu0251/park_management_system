@@ -1,0 +1,8 @@
+#pragma once
+
+// Copy to node_config.local.h (untracked) and add -DNODE_CONFIG_LOCAL to build_flags.
+
+// #define NODE_RF_CE_PIN 9
+// #define NODE_RF_CSN_PIN 10
+// #define NODE_RF_CHANNEL 100
+// #define NODE_RF_ADDR_GW_NODE_INIT 'G','W','A','Y','1'

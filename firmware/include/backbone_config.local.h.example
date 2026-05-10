@@ -1,0 +1,20 @@
+#pragma once
+
+// Copy to backbone_config.local.h (untracked) and add -DBACKBONE_CONFIG_LOCAL to build_flags.
+
+// #define BACKBONE_ID 1
+// #define BACKBONE_RF_CE_PIN 9
+// #define BACKBONE_RF_CSN_PIN 10
+// #define BACKBONE_RF_CHANNEL 100
+
+// Reader uplink sink (backbone RX pipe 1):
+// #define BACKBONE_RF_ADDR_GW_NODE_INIT 'G','W','A','Y','1'
+
+// Gateway downlink (backbone RX pipe 2):
+// #define BACKBONE_RF_ADDR_GW_SERVER_INIT 'G','W','S','V','1'
+
+// Backbone uplink toward USB gateway:
+// #define BACKBONE_RF_ADDR_SERVER_INIT 'S','E','R','V','1'
+
+// Strip Serial debug from release builds:
+// #define BACKBONE_DEBUG_UART 0
