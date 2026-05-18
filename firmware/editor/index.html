@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Park Firmware Editor</title>
+  <style>
+    :root {
+      --bg: #0d1117; --panel: #161b22; --border: #30363d;
+      --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
+      --ok: #3fb950; --err: #f85149; --mono: Consolas, monospace;
+      --node: #3fb950; --backbone: #d29922; --gateway: #a371f7;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 14px/1.4 "Segoe UI", sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; }
+    header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+    header h1 { margin: 0; font-size: 15px; font-weight: 600; }
+    .pill { font-size: 12px; color: var(--muted); }
+    .pill.ok { color: var(--ok); } .pill.bad { color: var(--err); }
+    .spacer { flex: 1; }
+    button { font: inherit; cursor: pointer; border: 1px solid var(--border); background: #21262d; color: var(--text); padding: 6px 12px; border-radius: 6px; }
+    button:hover { border-color: var(--accent); }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #000; font-weight: 600; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.sm { padding: 2px 7px; font-size: 12px; border-radius: 4px; }
+    button.danger:hover { border-color: var(--err); color: var(--err); }
+    main { flex: 1; display: grid; grid-template-columns: 260px 1fr; min-height: 0; }
+    aside { border-right: 1px solid var(--border); padding: 12px; overflow: auto; background: var(--panel); display: flex; flex-direction: column; gap: 14px; }
+    aside h2 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; color: var(--muted); letter-spacing: 0.05em; }
+    .env-group h2.node { color: var(--node); }
+    .env-group h2.backbone { color: var(--backbone); }
+    .env-group h2.gateway { color: var(--gateway); }
+    .env-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 13px; }
+    .env-row.missing { opacity: 0.45; }
+    .env-row label { flex: 1; display: flex; align-items: center; gap: 6px; cursor: pointer; min-width: 0; }
+    .env-row .name { overflow: hidden; text-overflow: ellipsis; }
+    .env-actions { display: flex; gap: 4px; margin-top: 4px; }
+    .quick label { display: block; margin-bottom: 8px; font-size: 12px; color: var(--muted); }
+    .quick input, .quick select { width: 100%; margin-top: 3px; padding: 6px 8px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; }
+    .quick .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    section.editor { display: flex; flex-direction: column; min-height: 0; }
+    #ini { flex: 1; width: 100%; resize: none; border: none; padding: 14px; font: 13px/1.45 var(--mono); background: var(--bg); color: var(--text); }
+    #ini:focus { outline: none; }
+    footer { border-top: 1px solid var(--border); background: var(--panel); padding: 8px 14px; min-height: 100px; max-height: 35vh; display: flex; flex-direction: column; }
+    footer h2 { margin: 0 0 6px; font-size: 11px; color: var(--muted); text-transform: uppercase; }
+    #log { flex: 1; margin: 0; overflow: auto; font: 12px/1.4 var(--mono); white-space: pre-wrap; color: var(--muted); }
+    #log.ok { color: var(--ok); } #log.err { color: var(--err); }
+    .banner { display: none; padding: 10px 14px; background: #3d1f1f; color: #ffb4b4; border-bottom: 1px solid var(--err); }
+    .banner.show { display: block; }
+    .hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div id="banner" class="banner"></div>
+  <header>
+    <h1>Park Firmware</h1>
+    <span id="status" class="pill">Connecting…</span>
+    <span class="spacer"></span>
+    <button type="button" id="btnReload">Reload</button>
+    <button type="button" id="btnSave" class="primary">Save</button>
+    <button type="button" id="btnBuild" class="primary">Build selected</button>
+  </header>
+  <main>
+    <aside>
+      <div class="env-group" id="groupNodes">
+        <h2 class="node">Nodes</h2>
+        <div id="listNodes"></div>
+        <div class="env-actions"><button type="button" class="sm" data-add="node">+ Add node</button></div>
+      </div>
+      <div class="env-group" id="groupBackbones">
+        <h2 class="backbone">Backbones</h2>
+        <div id="listBackbones"></div>
+        <div class="env-actions"><button type="button" class="sm" data-add="backbone">+ Add backbone</button></div>
+      </div>
+      <div class="env-group" id="groupGateways">
+        <h2 class="gateway">Gateways</h2>
+        <div id="listGateways"></div>
+        <div class="env-actions"><button type="button" class="sm" data-add="gateway">+ Add gateway</button></div>
+      </div>
+      <div class="quick">
+        <h2>Quick patch</h2>
+        <label>Default env<input id="qDefault" placeholder="node1"></label>
+        <label>Apply to
+          <select id="qScope">
+            <option value="all">All environments</option>
+            <option value="checked">Checked build targets only</option>
+            <option value="role">Whole role (nodes / backbones / gateways)</option>
+          </select>
+        </label>
+        <label id="qRoleWrap" style="display:none">Role
+          <select id="qRole">
+            <option value="node">Nodes</option>
+            <option value="backbone">Backbones</option>
+            <option value="gateway">Gateways</option>
+          </select>
+        </label>
+        <div class="row2">
+          <label>Node ID<input id="qNodeId" type="number" min="1" placeholder="—"></label>
+          <label>Reader ID<input id="qReaderId" type="number" min="1" placeholder="—"></label>
+        </div>
+        <div class="row2">
+          <label>Backbone ID<input id="qBackboneId" type="number" min="1" placeholder="—"></label>
+          <label>Gateway ID<input id="qGatewayId" type="number" min="1" placeholder="—"></label>
+        </div>
+        <label>RF channel (0–125, all roles)<input id="qChannel" type="number" min="0" max="125" placeholder="100"></label>
+        <button type="button" id="btnApplyQuick">Apply to INI</button>
+        <p class="hint">Leave fields blank to skip. Remove an env with × (needs at least one per role).</p>
+      </div>
+    </aside>
+    <section class="editor">
+      <textarea id="ini" spellcheck="false" placeholder="Loading platformio.ini…"></textarea>
+    </section>
+  </main>
+  <footer>
+    <h2>Build log</h2>
+    <pre id="log">Ready.</pre>
+  </footer>
+  <script>
+    const COMMON_ENVS = new Set(["atmega8_base", "node_common", "backbone_common", "gateway_common"]);
+    let dirty = false;
+    let buildTimer = null;
+
+    const $ = (id) => document.getElementById(id);
+
+    function showError(msg) {
+      $("banner").textContent = msg;
+      $("banner").classList.add("show");
+    }
+    function clearError() {
+      $("banner").classList.remove("show");
+    }
+
+    async function api(path, opts) {
+      let r;
+      try {
+        r = await fetch(path, opts);
+      } catch {
+        throw new Error("Cannot reach editor server. Run open-editor.bat (do not open index.html directly).");
+      }
+      const text = await r.text();
+      let data;
+      try { data = JSON.parse(text); } catch {
+        throw new Error(text.slice(0, 200) || "Invalid server response");
+      }
+      if (!data.ok && data.error) throw new Error(data.error);
+      if (!r.ok) throw new Error(data.error || r.statusText);
+      return data;
+    }
+
+    function envRole(name) {
+      if (/^node\d+$/.test(name)) return "node";
+      if (/^backbone\d*$/.test(name)) return "backbone";
+      if (/^gateway\d*$/.test(name)) return "gateway";
+      return null;
+    }
+
+    function parseEnvNames(text) {
+      const found = [];
+      for (const m of text.matchAll(/^\[env:([^\]]+)\]/gm)) {
+        const n = m[1];
+        if (COMMON_ENVS.has(n)) continue;
+        if (envRole(n)) found.push(n);
+      }
+      return sortEnvs(found);
+    }
+
+    function sortEnvs(names) {
+      const rank = (n) => {
+        const r = envRole(n);
+        if (r === "node") return [0, parseInt(n.replace("node", ""), 10) || 0, n];
+        if (r === "backbone") return [1, n === "backbone" ? 0 : parseInt(n.replace("backbone", ""), 10) || 99, n];
+        if (r === "gateway") return [2, n === "gateway" ? 0 : parseInt(n.replace("gateway", ""), 10) || 99, n];
+        return [9, 0, n];
+      };
+      return [...names].sort((a, b) => {
+        const ra = rank(a), rb = rank(b);
+        return ra[0] - rb[0] || ra[1] - rb[1] || ra[2].localeCompare(rb[2]);
+      });
+    }
+
+    function nextEnvName(role, text) {
+      if (role === "node") {
+        const ids = [...text.matchAll(/\[env:(node\d+)\]/g)].map((m) => parseInt(m[1].replace("node", ""), 10) || 0);
+        const next = ids.length ? Math.max(...ids) + 1 : 1;
+        return "node" + next;
+      }
+      if (role === "backbone") {
+        const names = [...text.matchAll(/\[env:(backbone\d*)\]/g)].map((m) => m[1]);
+        if (!names.some((n) => n === "backbone")) return "backbone";
+        const ids = names.filter((n) => n !== "backbone").map((n) => parseInt(n.replace("backbone", ""), 10) || 0);
+        const next = ids.length ? Math.max(...ids) + 1 : 2;
+        return "backbone" + next;
+      }
+      if (role === "gateway") {
+        const names = [...text.matchAll(/\[env:(gateway\d*)\]/g)].map((m) => m[1]);
+        if (!names.some((n) => n === "gateway")) return "gateway";
+        const ids = names.filter((n) => n !== "gateway").map((n) => parseInt(n.replace("gateway", ""), 10) || 0);
+        const next = ids.length ? Math.max(...ids) + 1 : 2;
+        return "gateway" + next;
+      }
+      return null;
+    }
+
+    function nextIdForRole(role, text) {
+      if (role === "node") {
+        const ids = [...text.matchAll(/-DNODE_ID=(\d+)/g)].map((m) => +m[1]);
+        return ids.length ? Math.max(...ids) + 1 : 1;
+      }
+      if (role === "backbone") {
+        const ids = [...text.matchAll(/-DBACKBONE_ID=(\d+)/g)].map((m) => +m[1]);
+        return ids.length ? Math.max(...ids) + 1 : 1;
+      }
+      if (role === "gateway") {
+        const ids = [...text.matchAll(/-DGATEWAY_ID=(\d+)/g)].map((m) => +m[1]);
+        return ids.length ? Math.max(...ids) + 1 : 1;
+      }
+      return 1;
+    }
+
+    function sectionAnchor(text, role) {
+      if (role === "node") return text.indexOf("; ----- Backbone");
+      if (role === "backbone") return text.indexOf("; ----- USB gateway");
+      return -1;
+    }
+
+    function insertEnvBlock(text, role, name, id) {
+      let block;
+      if (role === "node") {
+        block = `
+[env:${name}]
+extends = env:node_common
+build_flags =
+  \${env:node_common.build_flags}
+  -DNODE_ID=${id}
+  -DNODE_READER_ID=1
+`;
+      } else if (role === "backbone") {
+        block = `
+[env:${name}]
+extends = env:backbone_common
+build_flags =
+  \${env:backbone_common.build_flags}
+  -DBACKBONE_ID=${id}
+`;
+      } else if (role === "gateway") {
+        block = `
+[env:${name}]
+extends = env:gateway_common
+build_flags =
+  \${env:gateway_common.build_flags}
+  -DGATEWAY_ID=${id}
+`;
+      } else return text;
+
+      const anchor = sectionAnchor(text, role);
+      if (anchor > 0) return text.slice(0, anchor) + block + text.slice(anchor);
+      return text + block;
+    }
+
+    function removeEnvBlock(text, name) {
+      const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const re = new RegExp(`\\n?\\[env:${esc}\\][\\s\\S]*?(?=\\n\\[env:|\\n; -----|$)`);
+      return text.replace(re, "\n");
+    }
+
+    function countRole(text, role) {
+      return parseEnvNames(text).filter((n) => envRole(n) === role).length;
+    }
+
+    function renderEnvLists() {
+      const text = $("ini").value;
+      const present = new Set(parseEnvNames(text));
+      const checked = new Set(loadChecked());
+
+      function rows(role, listId) {
+        const allNames = sortEnvs([...present].filter((n) => envRole(n) === role));
+        const defaults = role === "node" ? ["node1"] : role === "backbone" ? ["backbone"] : ["gateway"];
+        const names = allNames.length ? allNames : defaults;
+
+        $(listId).innerHTML = names.map((name) => {
+          const exists = present.has(name);
+          const on = exists && (checked.has(name) || (!checked.size && defaults.includes(name)));
+          const canRemove = exists && countRole(text, role) > 1;
+          return `<div class="env-row${exists ? "" : " missing"}">
+            <label><input type="checkbox" data-env="${name}" ${on ? "checked" : ""} ${exists ? "" : "disabled"}>
+              <span class="name">${name}</span></label>
+            ${canRemove ? `<button type="button" class="sm danger" data-remove="${name}" title="Remove">×</button>` : ""}
+          </div>`;
+        }).join("");
+      }
+
+      rows("node", "listNodes");
+      rows("backbone", "listBackbones");
+      rows("gateway", "listGateways");
+    }
+
+    const CHECK_KEY = "park-fw-editor-checked";
+
+    function loadChecked() {
+      try {
+        return JSON.parse(sessionStorage.getItem(CHECK_KEY) || "[]");
+      } catch { return []; }
+    }
+
+    function saveChecked() {
+      const vals = [...document.querySelectorAll('input[data-env]:checked')].map((x) => x.dataset.env);
+      sessionStorage.setItem(CHECK_KEY, JSON.stringify(vals));
+    }
+
+    function selectedEnvs() {
+      return [...document.querySelectorAll('input[data-env]:checked')].map((x) => x.dataset.env)
+        .filter((n) => parseEnvNames($("ini").value).includes(n));
+    }
+
+    function setLog(text, kind) {
+      const log = $("log");
+      log.textContent = text;
+      log.className = kind || "";
+    }
+
+    async function loadIni() {
+      const res = await api("/api/ini");
+      $("ini").value = res.content;
+      dirty = false;
+      clearError();
+      $("status").textContent = "Loaded";
+      $("status").className = "pill ok";
+      renderEnvLists();
+    }
+
+    async function saveIni() {
+      const res = await api("/api/ini", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: $("ini").value }),
+      });
+      dirty = false;
+      setLog("Saved " + res.path, "ok");
+    }
+
+    async function pollBuild(jobId) {
+      const res = await api("/api/build?id=" + encodeURIComponent(jobId));
+      setLog(res.log || "(no output)", res.status === "ok" ? "ok" : res.done ? "err" : "");
+      if (!res.done) {
+        buildTimer = setTimeout(() => pollBuild(jobId), 400);
+        return;
+      }
+      $("btnBuild").disabled = false;
+      $("btnSave").disabled = false;
+      if (res.status === "ok") $("status").textContent = "Build OK";
+      else $("status").textContent = "Build failed";
+    }
+
+    async function startBuild() {
+      const envs = selectedEnvs();
+      if (!envs.length) {
+        setLog("Check at least one environment.", "err");
+        return;
+      }
+      if (dirty) await saveIni();
+      $("btnBuild").disabled = true;
+      $("btnSave").disabled = true;
+      setLog("Starting: " + envs.join(", ") + " …");
+      $("status").textContent = "Building…";
+      const res = await api("/api/build", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ envs }),
+      });
+      if (buildTimer) clearTimeout(buildTimer);
+      pollBuild(res.jobId);
+    }
+
+    function envNamesForPatch() {
+      const scope = $("qScope").value;
+      const all = parseEnvNames($("ini").value);
+      if (scope === "checked") return selectedEnvs();
+      if (scope === "role") return all.filter((n) => envRole(n) === $("qRole").value);
+      return all;
+    }
+
+    function patchEnvBlock(block, name, patches) {
+      if (!block.includes(`[env:${name}]`)) return block;
+      let out = block;
+      if (patches.nodeId != null) out = out.replace(/-DNODE_ID=\d+/g, "-DNODE_ID=" + patches.nodeId);
+      if (patches.readerId != null) out = out.replace(/-DNODE_READER_ID=\d+/g, "-DNODE_READER_ID=" + patches.readerId);
+      if (patches.backboneId != null) out = out.replace(/-DBACKBONE_ID=\d+/g, "-DBACKBONE_ID=" + patches.backboneId);
+      if (patches.gatewayId != null) out = out.replace(/-DGATEWAY_ID=\d+/g, "-DGATEWAY_ID=" + patches.gatewayId);
+      return out;
+    }
+
+    function applyQuick() {
+      let t = $("ini").value;
+      const def = $("qDefault").value.trim();
+      if (def) t = t.replace(/^default_envs\s*=.*/m, "default_envs = " + def);
+
+      const targets = new Set(envNamesForPatch());
+      const patches = {
+        nodeId: $("qNodeId").value.trim() ? +$("qNodeId").value : null,
+        readerId: $("qReaderId").value.trim() ? +$("qReaderId").value : null,
+        backboneId: $("qBackboneId").value.trim() ? +$("qBackboneId").value : null,
+        gatewayId: $("qGatewayId").value.trim() ? +$("qGatewayId").value : null,
+      };
+
+      if (targets.size && Object.values(patches).some((v) => v != null)) {
+        const parts = t.split(/(?=\n\[env:)/);
+        t = parts.map((part) => {
+          const m = part.match(/^\[env:([^\]]+)\]/);
+          if (!m || !targets.has(m[1])) return part;
+          return patchEnvBlock(part, m[1], patches);
+        }).join("");
+      }
+
+      const ch = $("qChannel").value.trim();
+      if (ch) {
+        const chNum = parseInt(ch, 10);
+        if (Number.isNaN(chNum) || chNum < 0 || chNum > 125) {
+          setLog("RF channel must be 0–125 (nRF24 range).", "err");
+          return;
+        }
+        const chVal = String(chNum);
+        t = t.replace(/-DNODE_RF_CHANNEL=\d+/g, "-DNODE_RF_CHANNEL=" + chVal);
+        t = t.replace(/-DBACKBONE_RF_CHANNEL=\d+/g, "-DBACKBONE_RF_CHANNEL=" + chVal);
+        t = t.replace(/-DGATEWAY_RF_CHANNEL=\d+/g, "-DGATEWAY_RF_CHANNEL=" + chVal);
+      }
+
+      $("ini").value = t;
+      dirty = true;
+      renderEnvLists();
+    }
+
+    function addEnv(role) {
+      let t = $("ini").value;
+      const name = nextEnvName(role, t);
+      if (t.includes("[env:" + name + "]")) return;
+      const id = nextIdForRole(role, t);
+      t = insertEnvBlock(t, role, name, id);
+      $("ini").value = t;
+      dirty = true;
+      renderEnvLists();
+      const cb = document.querySelector(`input[data-env="${name}"]`);
+      if (cb) cb.checked = true;
+      saveChecked();
+    }
+
+    function removeEnv(name) {
+      const role = envRole(name);
+      if (!role) return;
+      let t = $("ini").value;
+      if (countRole(t, role) <= 1) {
+        setLog("Cannot remove the last " + role + " environment.", "err");
+        return;
+      }
+      t = removeEnvBlock(t, name);
+      $("ini").value = t.replace(/\n{3,}/g, "\n\n");
+      dirty = true;
+      renderEnvLists();
+      saveChecked();
+    }
+
+    function wireAside() {
+      document.querySelectorAll("[data-add]").forEach((btn) => {
+        btn.onclick = () => addEnv(btn.dataset.add);
+      });
+      $("qScope").onchange = () => {
+        $("qRoleWrap").style.display = $("qScope").value === "role" ? "block" : "none";
+      };
+      document.querySelector("aside").addEventListener("click", (e) => {
+        const rm = e.target.closest("[data-remove]");
+        if (rm) removeEnv(rm.dataset.remove);
+      });
+      document.querySelector("aside").addEventListener("change", (e) => {
+        if (e.target.matches("input[data-env]")) saveChecked();
+      });
+    }
+
+    async function boot() {
+      wireAside();
+      try {
+        await api("/api/health");
+        await loadIni();
+      } catch (e) {
+        showError(e.message);
+        $("status").textContent = "Offline";
+        $("status").className = "pill bad";
+        return;
+      }
+      api("/api/pio-check").then((r) => {
+        $("status").textContent = r.ok ? r.version.replace("PlatformIO Core, ", "PIO ") : "PIO not installed";
+        $("status").className = "pill " + (r.ok ? "ok" : "bad");
+      }).catch(() => {});
+    }
+
+    $("ini").addEventListener("input", () => { dirty = true; renderEnvLists(); });
+    $("btnReload").onclick = () => loadIni().catch((e) => showError(e.message));
+    $("btnSave").onclick = () => saveIni().catch((e) => showError(e.message));
+    $("btnBuild").onclick = () => startBuild().catch((e) => { showError(e.message); $("btnBuild").disabled = false; });
+    $("btnApplyQuick").onclick = applyQuick;
+
+    boot();
+  </script>
+</body>
+</html>

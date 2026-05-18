@@ -1,0 +1,3 @@
+# PlatformIO Core and dependencies for offline pip install (Windows amd64, Python 3.10).
+# Regenerate wheels:  scripts/download-wheels.ps1
+platformio==6.1.19

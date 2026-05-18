@@ -1,2 +1,4 @@
 /.pio/*
 /firmware/.pio
+/firmware/.platformio-core
+/firmware/python-offline/wheels/
