@@ -10,10 +10,11 @@
       --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
       --ok: #3fb950; --err: #f85149; --mono: Consolas, monospace;
       --node: #3fb950; --backbone: #d29922; --gateway: #a371f7;
+      --dock-left-w: 260px; --dock-right-w: 300px; --dock-bottom-h: 200px; --gutter: 5px;
     }
     * { box-sizing: border-box; }
-    body { margin: 0; font: 14px/1.4 "Segoe UI", sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; }
-    header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+    body { margin: 0; font: 14px/1.4 "Segoe UI", sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+    header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--panel); border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap; }
     header h1 { margin: 0; font-size: 15px; font-weight: 600; }
     .pill { font-size: 12px; color: var(--muted); }
     .pill.ok { color: var(--ok); } .pill.bad { color: var(--err); }
@@ -23,125 +24,631 @@
     button.primary { background: var(--accent); border-color: var(--accent); color: #000; font-weight: 600; }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
     button.sm { padding: 2px 7px; font-size: 12px; border-radius: 4px; }
+    button.icon { padding: 2px 6px; min-width: 24px; }
     button.danger:hover { border-color: var(--err); color: var(--err); }
-    main { flex: 1; display: grid; grid-template-columns: 260px 1fr; min-height: 0; }
-    aside { border-right: 1px solid var(--border); padding: 12px; overflow: auto; background: var(--panel); display: flex; flex-direction: column; gap: 14px; }
-    aside h2 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; color: var(--muted); letter-spacing: 0.05em; }
-    .env-group h2.node { color: var(--node); }
-    .env-group h2.backbone { color: var(--backbone); }
-    .env-group h2.gateway { color: var(--gateway); }
+    .banner { display: none; padding: 10px 14px; background: #3d1f1f; color: #ffb4b4; border-bottom: 1px solid var(--err); flex-shrink: 0; }
+    .banner.show { display: block; }
+
+    #dockWorkspace {
+      flex: 1; min-height: 0; display: grid;
+      grid-template-columns: var(--dock-left-w) var(--gutter) 1fr var(--gutter) var(--dock-right-w);
+      grid-template-rows: 1fr var(--gutter) var(--dock-bottom-h);
+      grid-template-areas:
+        "left gl center gr right"
+        "gh gh gh gh gh"
+        "bottom bottom bottom bottom bottom";
+    }
+    #dockWorkspace.no-left { --dock-left-w: 0px; }
+    #dockWorkspace.no-right { --dock-right-w: 0px; }
+    #dockWorkspace.no-bottom { --dock-bottom-h: 0px; }
+
+    .dock-zone { min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; background: var(--bg); }
+    .dock-zone[data-zone="left"] { grid-area: left; border-right: 1px solid var(--border); }
+    .dock-zone[data-zone="center"] { grid-area: center; }
+    .dock-zone[data-zone="right"] { grid-area: right; border-left: 1px solid var(--border); }
+    .dock-zone[data-zone="bottom"] { grid-area: bottom; border-top: 1px solid var(--border); }
+    .dock-zone-inner { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+    .dock-gutter-zone { background: var(--border); z-index: 2; }
+    .dock-gutter-zone:hover, .dock-gutter-zone.active { background: var(--accent); }
+    .dock-gutter-zone[data-gutter="left"] { grid-area: gl; cursor: col-resize; }
+    .dock-gutter-zone[data-gutter="right"] { grid-area: gr; cursor: col-resize; }
+    .dock-gutter-zone[data-gutter="bottom"] { grid-area: gh; cursor: row-resize; }
+    .dock-gutter-zone.hidden { display: none; }
+
+    .dock-gutter-panel { flex: 0 0 var(--gutter); background: var(--border); cursor: row-resize; min-height: var(--gutter); }
+    .dock-gutter-panel:hover, .dock-gutter-panel.active { background: var(--accent); }
+
+    .dock-panel {
+      display: flex; flex-direction: column; min-height: 56px; min-width: 140px;
+      background: var(--panel); border-bottom: 1px solid var(--border); position: relative; overflow: hidden;
+    }
+    .dock-zone-inner > .dock-panel { flex: 1 1 120px; }
+    .dock-zone[data-zone="center"] > .dock-panel,
+    .dock-zone[data-zone="bottom"] > .dock-panel { flex: 1; border: none; height: 100%; }
+
+    .dock-panel-head {
+      display: flex; align-items: center; gap: 6px; padding: 5px 8px;
+      background: #1c2128; border-bottom: 1px solid var(--border); cursor: grab; user-select: none; flex-shrink: 0;
+    }
+    .dock-panel-head:active { cursor: grabbing; }
+    .dock-panel-title { flex: 1; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+    .dock-panel-title.node { color: var(--node); }
+    .dock-panel-title.backbone { color: var(--backbone); }
+    .dock-panel-title.gateway { color: var(--gateway); }
+    .dock-panel-title.accent { color: var(--accent); }
+    .dock-panel-actions { display: flex; gap: 2px; }
+    .dock-panel-body { flex: 1; min-height: 0; overflow: auto; padding: 8px 10px; }
+    .dock-panel.collapsed .dock-panel-body, .dock-panel.collapsed .dock-panel-resize { display: none; }
+    .dock-panel.collapsed { flex: 0 0 auto !important; min-height: 0; }
+
+    .dock-panel-resize {
+      position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; z-index: 5;
+      background: linear-gradient(135deg, transparent 50%, var(--border) 50%, var(--border) 60%, transparent 60%);
+    }
+    .dock-panel-resize:hover { background: linear-gradient(135deg, transparent 50%, var(--accent) 50%, var(--accent) 60%, transparent 60%); }
+
+    .dock-panel.floating {
+      position: fixed; z-index: 200; resize: both; box-shadow: 0 12px 40px rgba(0,0,0,0.55);
+      max-width: 96vw; max-height: 92vh; border: 1px solid var(--border);
+    }
+
+    #dockDropOverlay {
+      position: fixed; inset: 48px 8px 8px; z-index: 500; pointer-events: none;
+      display: none; grid-template-columns: 1fr 2fr 1fr; grid-template-rows: 1fr 2fr 1fr; gap: 8px;
+    }
+    #dockDropOverlay.show { display: grid; pointer-events: auto; }
+    .dock-drop-target {
+      border: 2px dashed var(--border); border-radius: 8px; background: rgba(88,166,255,0.06);
+      display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--muted);
+      text-transform: uppercase;
+    }
+    .dock-drop-target[data-zone="left"] { grid-column: 1; grid-row: 1 / 4; }
+    .dock-drop-target[data-zone="center"] { grid-column: 2; grid-row: 1 / 3; }
+    .dock-drop-target[data-zone="right"] { grid-column: 3; grid-row: 1 / 4; }
+    .dock-drop-target[data-zone="bottom"] { grid-column: 2; grid-row: 3; }
+    .dock-drop-target.hover { border-color: var(--accent); background: rgba(88,166,255,0.2); color: var(--accent); }
+
+    #dockFloatLayer { position: fixed; inset: 0; pointer-events: none; z-index: 150; }
+    #dockFloatLayer .dock-panel { pointer-events: auto; }
+
     .env-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 13px; }
     .env-row.missing { opacity: 0.45; }
     .env-row label { flex: 1; display: flex; align-items: center; gap: 6px; cursor: pointer; min-width: 0; }
     .env-row .name { overflow: hidden; text-overflow: ellipsis; }
-    .env-actions { display: flex; gap: 4px; margin-top: 4px; }
+    .env-actions { margin-top: 4px; }
     .quick label { display: block; margin-bottom: 8px; font-size: 12px; color: var(--muted); }
-    .quick input, .quick select { width: 100%; margin-top: 3px; padding: 6px 8px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; }
+    .quick input, .quick select {
+      width: 100%; margin-top: 3px; padding: 6px 8px; border-radius: 4px;
+      border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit;
+    }
     .quick .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    section.editor { display: flex; flex-direction: column; min-height: 0; }
-    #ini { flex: 1; width: 100%; resize: none; border: none; padding: 14px; font: 13px/1.45 var(--mono); background: var(--bg); color: var(--text); }
-    #ini:focus { outline: none; }
-    footer { border-top: 1px solid var(--border); background: var(--panel); padding: 8px 14px; min-height: 100px; max-height: 35vh; display: flex; flex-direction: column; }
-    footer h2 { margin: 0 0 6px; font-size: 11px; color: var(--muted); text-transform: uppercase; }
-    #log { flex: 1; margin: 0; overflow: auto; font: 12px/1.4 var(--mono); white-space: pre-wrap; color: var(--muted); }
+    .hint { font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.35; }
+
+    .common-editor, #ini {
+      width: 100%; min-height: 100px; flex: 1; resize: vertical; border: 1px solid var(--border);
+      border-radius: 4px; padding: 8px 10px; font: 12px/1.4 var(--mono);
+      background: var(--bg); color: var(--text);
+    }
+    .common-editor:focus, #ini:focus { outline: none; border-color: var(--accent); }
+    .dock-panel-body.editor-body, .dock-panel-body.common-body { padding: 6px; display: flex; flex-direction: column; }
+    .dock-panel-body.editor-body #ini { resize: vertical; min-height: 160px; border: none; }
+    .dock-panel-body.log-body { padding: 0; display: flex; flex-direction: column; }
+    #log { flex: 1; margin: 0; padding: 10px 12px; overflow: auto; font: 12px/1.4 var(--mono); white-space: pre-wrap; color: var(--muted); min-height: 80px; resize: vertical; }
     #log.ok { color: var(--ok); } #log.err { color: var(--err); }
-    .banner { display: none; padding: 10px 14px; background: #3d1f1f; color: #ffb4b4; border-bottom: 1px solid var(--err); }
-    .banner.show { display: block; }
-    .hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
   </style>
 </head>
 <body>
-  <div id="banner" class="banner"></div>
+  <div id="banner" class="banner"></motion>
   <header>
     <h1>Park Firmware</h1>
     <span id="status" class="pill">Connecting…</span>
     <span class="spacer"></span>
+    <button type="button" id="btnResetLayout" title="Restore default panel layout">Reset layout</button>
     <button type="button" id="btnReload">Reload</button>
     <button type="button" id="btnSave" class="primary">Save</button>
     <button type="button" id="btnBuild" class="primary">Build selected</button>
   </header>
-  <main>
-    <aside>
-      <div class="env-group" id="groupNodes">
-        <h2 class="node">Nodes</h2>
-        <div id="listNodes"></div>
-        <div class="env-actions"><button type="button" class="sm" data-add="node">+ Add node</button></div>
+
+  <div id="dockWorkspace">
+    <div class="dock-zone" data-zone="left"><div class="dock-zone-inner"></div></div>
+    <div class="dock-gutter-zone" data-gutter="left"></motion>
+    <div class="dock-zone" data-zone="center"></div>
+    <div class="dock-gutter-zone" data-gutter="right"></div>
+    <div class="dock-zone" data-zone="right"><div class="dock-zone-inner"></div></div>
+    <div class="dock-gutter-zone" data-gutter="bottom"></div>
+    <div class="dock-zone" data-zone="bottom"></div>
+  </div>
+  <div id="dockFloatLayer"></div>
+  <div id="dockDropOverlay">
+    <div class="dock-drop-target" data-zone="left">Dock left</div>
+    <div class="dock-drop-target" data-zone="center">Dock center</div>
+    <div class="dock-drop-target" data-zone="right">Dock right</div>
+    <div class="dock-drop-target" data-zone="bottom">Dock bottom</div>
+  </div>
+
+  <template id="tpl-panel-nodes">
+    <div id="listNodes"></div>
+    <div class="env-actions"><button type="button" class="sm" data-add="node">+ Add node</button></div>
+  </template>
+  <template id="tpl-panel-backbones">
+    <div id="listBackbones"></div>
+    <div class="env-actions"><button type="button" class="sm" data-add="backbone">+ Add backbone</button></div>
+  </template>
+  <template id="tpl-panel-gateways">
+    <div id="listGateways"></div>
+    <div class="env-actions"><button type="button" class="sm" data-add="gateway">+ Add gateway</button></div>
+  </template>
+  <template id="tpl-panel-quick">
+    <div class="quick">
+      <label>Default env<input id="qDefault" placeholder="node1"></label>
+      <label>Apply to<select id="qScope">
+        <option value="all">All instance envs</option>
+        <option value="checked">Checked build targets</option>
+        <option value="role">One role only</option>
+      </select></label>
+      <label id="qRoleWrap" style="display:none">Role<select id="qRole">
+        <option value="node">Nodes</option><option value="backbone">Backbones</option><option value="gateway">Gateways</option>
+      </select></label>
+      <div class="row2">
+        <label>Node ID<input id="qNodeId" type="number" min="1" placeholder="—"></label>
+        <label>Reader ID<input id="qReaderId" type="number" min="1" placeholder="—"></label>
       </div>
-      <div class="env-group" id="groupBackbones">
-        <h2 class="backbone">Backbones</h2>
-        <div id="listBackbones"></div>
-        <div class="env-actions"><button type="button" class="sm" data-add="backbone">+ Add backbone</button></div>
+      <div class="row2">
+        <label>Backbone ID<input id="qBackboneId" type="number" min="1" placeholder="—"></label>
+        <label>Gateway ID<input id="qGatewayId" type="number" min="1" placeholder="—"></label>
       </div>
-      <div class="env-group" id="groupGateways">
-        <h2 class="gateway">Gateways</h2>
-        <div id="listGateways"></div>
-        <div class="env-actions"><button type="button" class="sm" data-add="gateway">+ Add gateway</button></div>
-      </div>
-      <div class="quick">
-        <h2>Quick patch</h2>
-        <label>Default env<input id="qDefault" placeholder="node1"></label>
-        <label>Apply to
-          <select id="qScope">
-            <option value="all">All environments</option>
-            <option value="checked">Checked build targets only</option>
-            <option value="role">Whole role (nodes / backbones / gateways)</option>
-          </select>
-        </label>
-        <label id="qRoleWrap" style="display:none">Role
-          <select id="qRole">
-            <option value="node">Nodes</option>
-            <option value="backbone">Backbones</option>
-            <option value="gateway">Gateways</option>
-          </select>
-        </label>
-        <div class="row2">
-          <label>Node ID<input id="qNodeId" type="number" min="1" placeholder="—"></label>
-          <label>Reader ID<input id="qReaderId" type="number" min="1" placeholder="—"></label>
-        </div>
-        <div class="row2">
-          <label>Backbone ID<input id="qBackboneId" type="number" min="1" placeholder="—"></label>
-          <label>Gateway ID<input id="qGatewayId" type="number" min="1" placeholder="—"></label>
-        </div>
-        <label>RF channel (0–125, all roles)<input id="qChannel" type="number" min="0" max="125" placeholder="100"></label>
-        <button type="button" id="btnApplyQuick">Apply to INI</button>
-        <p class="hint">Leave fields blank to skip. Remove an env with × (needs at least one per role).</p>
-      </div>
-    </aside>
-    <section class="editor">
-      <textarea id="ini" spellcheck="false" placeholder="Loading platformio.ini…"></textarea>
-    </section>
-  </main>
-  <footer>
-    <h2>Build log</h2>
+      <label>RF channel (0–125)<input id="qChannel" type="number" min="0" max="125" placeholder="100"></label>
+      <button type="button" id="btnApplyQuick">Apply to INI</button>
+      <p class="hint">Drag title bars to dock. Resize with splitters or the corner grip on each panel.</p>
+    </div>
+  </template>
+  <template id="tpl-panel-node-common">
+    <p class="hint">Shared by all <code>nodeN</code> envs. Edits merge into platformio.ini on change.</p>
+    <textarea class="common-editor" id="common-node_common" spellcheck="false" rows="12"></textarea>
+  </template>
+  <template id="tpl-panel-backbone-common">
+    <p class="hint">Shared by all backbone envs.</p>
+    <textarea class="common-editor" id="common-backbone_common" spellcheck="false" rows="12"></textarea>
+  </template>
+  <template id="tpl-panel-gateway-common">
+    <p class="hint">Shared by all gateway envs.</p>
+    <textarea class="common-editor" id="common-gateway_common" spellcheck="false" rows="10"></textarea>
+  </template>
+  <template id="tpl-panel-ini">
+    <textarea id="ini" spellcheck="false" placeholder="Loading platformio.ini…"></textarea>
+  </template>
+  <template id="tpl-panel-log">
     <pre id="log">Ready.</pre>
-  </footer>
+  </template>
+
   <script>
-    const COMMON_ENVS = new Set(["atmega8_base", "node_common", "backbone_common", "gateway_common"]);
+    const COMMON_ENV_NAMES = ["node_common", "backbone_common", "gateway_common"];
+    const BUILD_COMMON_SKIP = new Set(["atmega8_base", ...COMMON_ENV_NAMES]);
+    const LAYOUT_KEY = "park-fw-dock-layout-v2";
     let dirty = false;
     let buildTimer = null;
+    let syncingIni = false;
+    let dockManager = null;
 
     const $ = (id) => document.getElementById(id);
 
-    function showError(msg) {
-      $("banner").textContent = msg;
-      $("banner").classList.add("show");
+    /* ---- INI section helpers ---- */
+    function extractEnvBlock(ini, name) {
+      const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const re = new RegExp(`(\\[env:${esc}\\][\\s\\S]*?)(?=\\n\\[env:|\\n; -----|$)`);
+      const m = ini.match(re);
+      return m ? m[1].replace(/\s+$/, "") : "";
     }
-    function clearError() {
-      $("banner").classList.remove("show");
+
+    function replaceEnvBlock(ini, name, block) {
+      const trimmed = block.trim();
+      if (!trimmed) return ini;
+      const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const re = new RegExp(`\\[env:${esc}\\][\\s\\S]*?(?=\\n\\[env:|\\n; -----|$)`);
+      if (re.test(ini)) return ini.replace(re, trimmed + "\n");
+      const anchors = {
+        node_common: "; ----- Reader node",
+        backbone_common: "; ----- Backbone relay",
+        gateway_common: "; ----- USB gateway",
+      };
+      const anchor = anchors[name];
+      if (anchor && ini.includes(anchor)) {
+        const i = ini.indexOf(anchor);
+        return ini.slice(0, i) + trimmed + "\n\n" + ini.slice(i);
+      }
+      return ini + "\n" + trimmed + "\n";
     }
+
+    function syncCommonEditorsFromIni() {
+      if (syncingIni) return;
+      syncingIni = true;
+      const ini = $("ini").value;
+      COMMON_ENV_NAMES.forEach((name) => {
+        const el = $("common-" + name);
+        if (el) el.value = extractEnvBlock(ini, name);
+      });
+      syncingIni = false;
+    }
+
+    function mergeCommonEditorIntoIni(name) {
+      if (syncingIni) return;
+      const el = $("common-" + name);
+      if (!el) return;
+      syncingIni = true;
+      $("ini").value = replaceEnvBlock($("ini").value, name, el.value);
+      syncingIni = false;
+      dirty = true;
+      renderEnvLists();
+    }
+
+    function mergeAllCommonIntoIni() {
+      COMMON_ENV_NAMES.forEach(mergeCommonEditorIntoIni);
+    }
+
+    /* ---- Dock manager ---- */
+    const DockManager = (function () {
+      const DEFAULT_LAYOUT = {
+        zoneSizes: { left: 260, right: 300, bottom: 200 },
+        panels: {
+          nodes: { zone: "left", order: 0, flex: "0 0 140px" },
+          backbones: { zone: "left", order: 1, flex: "0 0 120px" },
+          gateways: { zone: "left", order: 2, flex: "0 0 120px" },
+          quick: { zone: "left", order: 3, flex: "1 1 160px" },
+          nodeCommon: { zone: "right", order: 0, flex: "1 1 140px" },
+          backboneCommon: { zone: "right", order: 1, flex: "1 1 140px" },
+          gatewayCommon: { zone: "right", order: 2, flex: "1 1 120px" },
+          ini: { zone: "center", order: 0 },
+          log: { zone: "bottom", order: 0 },
+        },
+      };
+
+      const PANEL_DEFS = [
+        { id: "nodes", title: "Nodes", titleClass: "node", template: "tpl-panel-nodes" },
+        { id: "backbones", title: "Backbones", titleClass: "backbone", template: "tpl-panel-backbones" },
+        { id: "gateways", title: "Gateways", titleClass: "gateway", template: "tpl-panel-gateways" },
+        { id: "quick", title: "Quick patch", template: "tpl-panel-quick" },
+        { id: "nodeCommon", title: "node_common", titleClass: "node", template: "tpl-panel-node-common", bodyClass: "common-body" },
+        { id: "backboneCommon", title: "backbone_common", titleClass: "backbone", template: "tpl-panel-backbone-common", bodyClass: "common-body" },
+        { id: "gatewayCommon", title: "gateway_common", titleClass: "gateway", template: "tpl-panel-gateway-common", bodyClass: "common-body" },
+        { id: "ini", title: "platformio.ini (full)", titleClass: "accent", template: "tpl-panel-ini", bodyClass: "editor-body" },
+        { id: "log", title: "Build log", template: "tpl-panel-log", bodyClass: "log-body" },
+      ];
+
+      let applyingLayout = false;
+
+      function zoneEl(zone) {
+        if (zone === "left" || zone === "right") {
+          return document.querySelector(`.dock-zone[data-zone="${zone}"] .dock-zone-inner`);
+        }
+        return document.querySelector(`.dock-zone[data-zone="${zone}"]`);
+      }
+
+      function applyZoneSizes(sizes) {
+        const root = $("dockWorkspace");
+        root.style.setProperty("--dock-left-w", (sizes.left || 0) + "px");
+        root.style.setProperty("--dock-right-w", (sizes.right || 0) + "px");
+        root.style.setProperty("--dock-bottom-h", (sizes.bottom || 0) + "px");
+        root.classList.toggle("no-left", !sizes.left);
+        root.classList.toggle("no-right", !sizes.right);
+        root.classList.toggle("no-bottom", !sizes.bottom);
+        document.querySelector('[data-gutter="left"]').classList.toggle("hidden", !sizes.left);
+        document.querySelector('[data-gutter="right"]').classList.toggle("hidden", !sizes.right);
+        document.querySelector('[data-gutter="bottom"]').classList.toggle("hidden", !sizes.bottom);
+        if (sizes.right > 0) {
+          document.querySelector('.dock-zone[data-zone="right"]').style.display = "flex";
+        }
+      }
+
+      function insertGutters(container) {
+        if (!container) return;
+        container.querySelectorAll(":scope > .dock-gutter-panel").forEach((g) => g.remove());
+        const panels = [...container.querySelectorAll(":scope > .dock-panel")];
+        for (let i = 1; i < panels.length; i++) {
+          const g = document.createElement("div");
+          g.className = "dock-gutter-panel";
+          container.insertBefore(g, panels[i]);
+          wirePanelGutter(g, panels[i - 1], panels[i]);
+        }
+      }
+
+      function wirePanelGutter(gutter, above, below) {
+        gutter.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          gutter.classList.add("active");
+          const startY = e.clientY;
+          const startAbove = above.getBoundingClientRect().height;
+          const startBelow = below.getBoundingClientRect().height;
+          const onMove = (ev) => {
+            const dy = ev.clientY - startY;
+            above.style.flex = `0 0 ${Math.max(56, startAbove + dy)}px`;
+            below.style.flex = `0 0 ${Math.max(56, startBelow - dy)}px`;
+          };
+          const onUp = () => {
+            gutter.classList.remove("active");
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+            if (!applyingLayout) save();
+          };
+          document.addEventListener("mousemove", onMove);
+          document.addEventListener("mouseup", onUp);
+        });
+      }
+
+      function wirePanelCornerResize(panel) {
+        const handle = panel.querySelector(".dock-panel-resize");
+        if (!handle) return;
+        handle.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const startX = e.clientX, startY = e.clientY;
+          const startW = panel.offsetWidth, startH = panel.offsetHeight;
+          const onMove = (ev) => {
+            if (panel.classList.contains("floating")) {
+              panel.style.width = Math.max(180, startW + ev.clientX - startX) + "px";
+              panel.style.height = Math.max(80, startH + ev.clientY - startY) + "px";
+            } else {
+              panel.style.flex = `0 0 ${Math.max(56, startH + ev.clientY - startY)}px`;
+            }
+          };
+          const onUp = () => {
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+            if (!applyingLayout) save();
+          };
+          document.addEventListener("mousemove", onMove);
+          document.addEventListener("mouseup", onUp);
+        });
+      }
+
+      function wireZoneGutters() {
+        const drag = (gutter, cssVar, min, sign) => {
+          gutter.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            gutter.classList.add("active");
+            const start = gutter.dataset.gutter === "bottom" ? e.clientY : e.clientX;
+            const root = $("dockWorkspace");
+            const startVal = parseInt(getComputedStyle(root).getPropertyValue(cssVar), 10) || min;
+            const onMove = (ev) => {
+              const cur = gutter.dataset.gutter === "bottom" ? ev.clientY : ev.clientX;
+              const delta = gutter.dataset.gutter === "bottom" ? start - cur : cur - start;
+              root.style.setProperty(cssVar, Math.max(min, startVal + delta * sign) + "px");
+            };
+            const onUp = () => {
+              gutter.classList.remove("active");
+              document.removeEventListener("mousemove", onMove);
+              document.removeEventListener("mouseup", onUp);
+              if (!applyingLayout) save();
+            };
+            document.addEventListener("mousemove", onMove);
+            document.addEventListener("mouseup", onUp);
+          });
+        };
+        drag(document.querySelector('[data-gutter="left"]'), "--dock-left-w", 160, 1);
+        drag(document.querySelector('[data-gutter="right"]'), "--dock-right-w", 200, 1);
+        drag(document.querySelector('[data-gutter="bottom"]'), "--dock-bottom-h", 80, 1);
+      }
+
+      function clearZone(zone) {
+        const c = zoneEl(zone);
+        if (!c) return;
+        c.querySelectorAll(":scope > .dock-panel, :scope > .dock-gutter-panel").forEach((n) => n.remove());
+      }
+
+      function createPanel(def) {
+        const el = document.createElement("motion");
+        el.className = "dock-panel";
+        el.dataset.panelId = def.id;
+        const head = document.createElement("div");
+        head.className = "dock-panel-head";
+        head.innerHTML = `
+          <span class="dock-panel-title ${def.titleClass || ""}">${def.title}</span>
+          <span class="dock-panel-actions">
+            <button type="button" class="icon sm" data-act="collapse" title="Collapse">−</button>
+            <button type="button" class="icon sm" data-act="float" title="Float / dock">⧉</button>
+          </span>`;
+        const body = document.createElement("div");
+        body.className = "dock-panel-body" + (def.bodyClass ? " " + def.bodyClass : "");
+        body.appendChild(document.getElementById(def.template).content.cloneNode(true));
+        const resize = document.createElement("div");
+        resize.className = "dock-panel-resize";
+        resize.title = "Resize panel";
+        el.append(head, body, resize);
+        return el;
+      }
+
+      const mgr = {
+        panels: new Map(),
+
+        init() {
+          PANEL_DEFS.forEach((def) => {
+            const panel = createPanel(def);
+            this.panels.set(def.id, panel);
+            this.wirePanel(panel);
+            wirePanelCornerResize(panel);
+          });
+          wireZoneGutters();
+          this.apply(this.load() || DEFAULT_LAYOUT);
+        },
+
+        wirePanel(panel) {
+          const id = panel.dataset.panelId;
+          const head = panel.querySelector(".dock-panel-head");
+          head.querySelector('[data-act="collapse"]').onclick = (e) => {
+            e.stopPropagation();
+            panel.classList.toggle("collapsed");
+            head.querySelector('[data-act="collapse"]').textContent = panel.classList.contains("collapsed") ? "+" : "−";
+            if (!applyingLayout) save();
+          };
+          head.querySelector('[data-act="float"]').onclick = (e) => {
+            e.stopPropagation();
+            if (panel.classList.contains("floating")) {
+              const cfg = (this.load() || DEFAULT_LAYOUT).panels[id] || DEFAULT_LAYOUT.panels[id] || { zone: "left" };
+              this.dock(id, cfg.zone, cfg);
+            } else {
+              this.float(id);
+            }
+          };
+          head.addEventListener("mousedown", (e) => {
+            if (e.target.closest("button")) return;
+            this.startDrag(panel, e);
+          });
+        },
+
+        dock(panelId, zone, opts = {}) {
+          const panel = this.panels.get(panelId);
+          if (!panel) return;
+          panel.classList.remove("floating");
+          panel.style.cssText = "";
+          panel.remove();
+          const z = zone || "left";
+          const container = zoneEl(z);
+          if (!container) return;
+          if (z === "left" || z === "right") {
+            container.appendChild(panel);
+            panel.style.flex = opts.flex || "1 1 120px";
+            insertGutters(container);
+          } else {
+            container.innerHTML = "";
+            container.appendChild(panel);
+            panel.style.flex = "1";
+            panel.style.height = "100%";
+          }
+          panel.classList.toggle("collapsed", !!opts.collapsed);
+          const btn = panel.querySelector('[data-act="collapse"]');
+          if (btn) btn.textContent = panel.classList.contains("collapsed") ? "+" : "−";
+          if (!applyingLayout) save();
+        },
+
+        float(panelId, rect) {
+          const panel = this.panels.get(panelId);
+          if (!panel) return;
+          const parent = panel.parentElement;
+          panel.remove();
+          if (parent && parent.classList.contains("dock-zone-inner")) insertGutters(parent);
+          panel.classList.add("floating");
+          const r = rect || { left: 80, top: 64, width: 380, height: 300 };
+          panel.style.left = r.left + "px";
+          panel.style.top = r.top + "px";
+          panel.style.width = r.width + "px";
+          panel.style.height = r.height + "px";
+          $("dockFloatLayer").appendChild(panel);
+          if (!applyingLayout) save();
+        },
+
+        startDrag(panel, e) {
+          const id = panel.dataset.panelId;
+          const overlay = $("dockDropOverlay");
+          if (!panel.classList.contains("floating")) {
+            const r = panel.getBoundingClientRect();
+            this.float(id, { left: r.left, top: r.top, width: r.width, height: r.height });
+            panel = this.panels.get(id);
+          }
+          overlay.classList.add("show");
+          const ox = e.clientX - panel.getBoundingClientRect().left;
+          const oy = e.clientY - panel.getBoundingClientRect().top;
+          const onMove = (ev) => {
+            panel.style.left = ev.clientX - ox + "px";
+            panel.style.top = ev.clientY - oy + "px";
+            overlay.querySelectorAll(".dock-drop-target").forEach((el) => {
+              const r = el.getBoundingClientRect();
+              const hit = ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+              el.classList.toggle("hover", hit);
+            });
+          };
+          const onUp = (ev) => {
+            overlay.classList.remove("show");
+            overlay.querySelectorAll(".dock-drop-target").forEach((el) => el.classList.remove("hover"));
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+            let dropped = null;
+            overlay.querySelectorAll(".dock-drop-target").forEach((el) => {
+              const r = el.getBoundingClientRect();
+              if (ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom) dropped = el.dataset.zone;
+            });
+            if (dropped) this.dock(id, dropped);
+            else if (!applyingLayout) save();
+          };
+          document.addEventListener("mousemove", onMove);
+          document.addEventListener("mouseup", onUp);
+        },
+
+        apply(layout) {
+          applyingLayout = true;
+          const L = layout && layout.panels ? layout : DEFAULT_LAYOUT;
+          applyZoneSizes(L.zoneSizes || DEFAULT_LAYOUT.zoneSizes);
+          ["left", "center", "bottom", "right"].forEach(clearZone);
+          $("dockFloatLayer").innerHTML = "";
+          this.panels.forEach((p) => { p.classList.remove("floating"); p.remove(); });
+          const docked = { left: [], right: [], center: [], bottom: [] };
+          Object.entries(L.panels || DEFAULT_LAYOUT.panels).forEach(([id, cfg]) => {
+            if (cfg.float) return;
+            (docked[cfg.zone || "left"] || docked.left).push({ id, cfg });
+          });
+          ["left", "right", "center", "bottom"].forEach((z) => {
+            docked[z].sort((a, b) => (a.cfg.order || 0) - (b.cfg.order || 0));
+            docked[z].forEach(({ id, cfg }) => this.dock(id, z, cfg));
+          });
+          Object.entries(L.panels || {}).forEach(([id, cfg]) => {
+            if (cfg.float) this.float(id, cfg.float);
+          });
+          applyingLayout = false;
+          save();
+        },
+
+        reset() {
+          localStorage.removeItem(LAYOUT_KEY);
+          this.apply(JSON.parse(JSON.stringify(DEFAULT_LAYOUT)));
+        },
+
+        load() {
+          try { return JSON.parse(localStorage.getItem(LAYOUT_KEY)); } catch { return null; }
+        },
+
+        save() {
+          if (applyingLayout) return;
+          const layout = { zoneSizes: {}, panels: {} };
+          const root = $("dockWorkspace");
+          layout.zoneSizes.left = parseInt(getComputedStyle(root).getPropertyValue("--dock-left-w"), 10) || 0;
+          layout.zoneSizes.right = parseInt(getComputedStyle(root).getPropertyValue("--dock-right-w"), 10) || 0;
+          layout.zoneSizes.bottom = parseInt(getComputedStyle(root).getPropertyValue("--dock-bottom-h"), 10) || 0;
+          this.panels.forEach((panel, id) => {
+            const collapsed = panel.classList.contains("collapsed");
+            if (panel.classList.contains("floating")) {
+              const r = panel.getBoundingClientRect();
+              layout.panels[id] = { float: { left: r.left, top: r.top, width: r.width, height: r.height }, collapsed };
+              return;
+            }
+            const zone = panel.closest(".dock-zone")?.dataset.zone || "left";
+            const inner = panel.parentElement;
+            let order = 0;
+            if (inner?.classList.contains("dock-zone-inner")) {
+              order = [...inner.querySelectorAll(":scope > .dock-panel")].indexOf(panel);
+            }
+            layout.panels[id] = {
+              zone, order, collapsed,
+              flex: panel.style.flex || undefined,
+            };
+          });
+          localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout));
+        },
+      };
+
+      return mgr;
+    })();
+
+    /* ---- Editor logic ---- */
+    function showError(msg) { $("banner").textContent = msg; $("banner").classList.add("show"); }
+    function clearError() { $("banner").classList.remove("show"); }
 
     async function api(path, opts) {
       let r;
-      try {
-        r = await fetch(path, opts);
-      } catch {
+      try { r = await fetch(path, opts); } catch {
         throw new Error("Cannot reach editor server. Run open-editor.bat (do not open index.html directly).");
       }
       const text = await r.text();
       let data;
-      try { data = JSON.parse(text); } catch {
-        throw new Error(text.slice(0, 200) || "Invalid server response");
-      }
+      try { data = JSON.parse(text); } catch { throw new Error(text.slice(0, 200) || "Invalid response"); }
       if (!data.ok && data.error) throw new Error(data.error);
       if (!r.ok) throw new Error(data.error || r.statusText);
       return data;
@@ -158,7 +665,7 @@
       const found = [];
       for (const m of text.matchAll(/^\[env:([^\]]+)\]/gm)) {
         const n = m[1];
-        if (COMMON_ENVS.has(n)) continue;
+        if (BUILD_COMMON_SKIP.has(n)) continue;
         if (envRole(n)) found.push(n);
       }
       return sortEnvs(found);
@@ -181,22 +688,19 @@
     function nextEnvName(role, text) {
       if (role === "node") {
         const ids = [...text.matchAll(/\[env:(node\d+)\]/g)].map((m) => parseInt(m[1].replace("node", ""), 10) || 0);
-        const next = ids.length ? Math.max(...ids) + 1 : 1;
-        return "node" + next;
+        return "node" + (ids.length ? Math.max(...ids) + 1 : 1);
       }
       if (role === "backbone") {
         const names = [...text.matchAll(/\[env:(backbone\d*)\]/g)].map((m) => m[1]);
         if (!names.some((n) => n === "backbone")) return "backbone";
         const ids = names.filter((n) => n !== "backbone").map((n) => parseInt(n.replace("backbone", ""), 10) || 0);
-        const next = ids.length ? Math.max(...ids) + 1 : 2;
-        return "backbone" + next;
+        return "backbone" + (ids.length ? Math.max(...ids) + 1 : 2);
       }
       if (role === "gateway") {
         const names = [...text.matchAll(/\[env:(gateway\d*)\]/g)].map((m) => m[1]);
         if (!names.some((n) => n === "gateway")) return "gateway";
         const ids = names.filter((n) => n !== "gateway").map((n) => parseInt(n.replace("gateway", ""), 10) || 0);
-        const next = ids.length ? Math.max(...ids) + 1 : 2;
-        return "gateway" + next;
+        return "gateway" + (ids.length ? Math.max(...ids) + 1 : 2);
       }
       return null;
     }
@@ -226,41 +730,19 @@
     function insertEnvBlock(text, role, name, id) {
       let block;
       if (role === "node") {
-        block = `
-[env:${name}]
-extends = env:node_common
-build_flags =
-  \${env:node_common.build_flags}
-  -DNODE_ID=${id}
-  -DNODE_READER_ID=1
-`;
+        block = `\n[env:${name}]\nextends = env:node_common\nbuild_flags =\n  \${env:node_common.build_flags}\n  -DNODE_ID=${id}\n  -DNODE_READER_ID=1\n`;
       } else if (role === "backbone") {
-        block = `
-[env:${name}]
-extends = env:backbone_common
-build_flags =
-  \${env:backbone_common.build_flags}
-  -DBACKBONE_ID=${id}
-`;
+        block = `\n[env:${name}]\nextends = env:backbone_common\nbuild_flags =\n  \${env:backbone_common.build_flags}\n  -DBACKBONE_ID=${id}\n`;
       } else if (role === "gateway") {
-        block = `
-[env:${name}]
-extends = env:gateway_common
-build_flags =
-  \${env:gateway_common.build_flags}
-  -DGATEWAY_ID=${id}
-`;
+        block = `\n[env:${name}]\nextends = env:gateway_common\nbuild_flags =\n  \${env:gateway_common.build_flags}\n  -DGATEWAY_ID=${id}\n`;
       } else return text;
-
       const anchor = sectionAnchor(text, role);
-      if (anchor > 0) return text.slice(0, anchor) + block + text.slice(anchor);
-      return text + block;
+      return anchor > 0 ? text.slice(0, anchor) + block + text.slice(anchor) : text + block;
     }
 
     function removeEnvBlock(text, name) {
       const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const re = new RegExp(`\\n?\\[env:${esc}\\][\\s\\S]*?(?=\\n\\[env:|\\n; -----|$)`);
-      return text.replace(re, "\n");
+      return text.replace(new RegExp(`\\n?\\[env:${esc}\\][\\s\\S]*?(?=\\n\\[env:|\\n; -----|$)`), "\n");
     }
 
     function countRole(text, role) {
@@ -271,44 +753,39 @@ build_flags =
       const text = $("ini").value;
       const present = new Set(parseEnvNames(text));
       const checked = new Set(loadChecked());
-
       function rows(role, listId) {
-        const allNames = sortEnvs([...present].filter((n) => envRole(n) === role));
+        const el = $(listId);
+        if (!el) return;
+        const names = sortEnvs([...present].filter((n) => envRole(n) === role));
         const defaults = role === "node" ? ["node1"] : role === "backbone" ? ["backbone"] : ["gateway"];
-        const names = allNames.length ? allNames : defaults;
-
-        $(listId).innerHTML = names.map((name) => {
+        const show = names.length ? names : defaults;
+        el.innerHTML = show.map((name) => {
           const exists = present.has(name);
           const on = exists && (checked.has(name) || (!checked.size && defaults.includes(name)));
           const canRemove = exists && countRole(text, role) > 1;
           return `<div class="env-row${exists ? "" : " missing"}">
             <label><input type="checkbox" data-env="${name}" ${on ? "checked" : ""} ${exists ? "" : "disabled"}>
               <span class="name">${name}</span></label>
-            ${canRemove ? `<button type="button" class="sm danger" data-remove="${name}" title="Remove">×</button>` : ""}
-          </div>`;
+            ${canRemove ? `<button type="button" class="sm danger" data-remove="${name}">×</button>` : ""}
+          </motion>`;
         }).join("");
       }
-
       rows("node", "listNodes");
       rows("backbone", "listBackbones");
       rows("gateway", "listGateways");
     }
 
     const CHECK_KEY = "park-fw-editor-checked";
-
     function loadChecked() {
-      try {
-        return JSON.parse(sessionStorage.getItem(CHECK_KEY) || "[]");
-      } catch { return []; }
+      try { return JSON.parse(sessionStorage.getItem(CHECK_KEY) || "[]"); } catch { return []; }
     }
-
     function saveChecked() {
-      const vals = [...document.querySelectorAll('input[data-env]:checked')].map((x) => x.dataset.env);
-      sessionStorage.setItem(CHECK_KEY, JSON.stringify(vals));
+      sessionStorage.setItem(CHECK_KEY, JSON.stringify(
+        [...document.querySelectorAll("input[data-env]:checked")].map((x) => x.dataset.env)
+      ));
     }
-
     function selectedEnvs() {
-      return [...document.querySelectorAll('input[data-env]:checked')].map((x) => x.dataset.env)
+      return [...document.querySelectorAll("input[data-env]:checked")].map((x) => x.dataset.env)
         .filter((n) => parseEnvNames($("ini").value).includes(n));
     }
 
@@ -325,10 +802,12 @@ build_flags =
       clearError();
       $("status").textContent = "Loaded";
       $("status").className = "pill ok";
+      syncCommonEditorsFromIni();
       renderEnvLists();
     }
 
     async function saveIni() {
+      mergeAllCommonIntoIni();
       const res = await api("/api/ini", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -341,22 +820,16 @@ build_flags =
     async function pollBuild(jobId) {
       const res = await api("/api/build?id=" + encodeURIComponent(jobId));
       setLog(res.log || "(no output)", res.status === "ok" ? "ok" : res.done ? "err" : "");
-      if (!res.done) {
-        buildTimer = setTimeout(() => pollBuild(jobId), 400);
-        return;
-      }
+      if (!res.done) { buildTimer = setTimeout(() => pollBuild(jobId), 400); return; }
       $("btnBuild").disabled = false;
       $("btnSave").disabled = false;
-      if (res.status === "ok") $("status").textContent = "Build OK";
-      else $("status").textContent = "Build failed";
+      $("status").textContent = res.status === "ok" ? "Build OK" : "Build failed";
     }
 
     async function startBuild() {
       const envs = selectedEnvs();
-      if (!envs.length) {
-        setLog("Check at least one environment.", "err");
-        return;
-      }
+      if (!envs.length) { setLog("Check at least one environment.", "err"); return; }
+      mergeAllCommonIntoIni();
       if (dirty) await saveIni();
       $("btnBuild").disabled = true;
       $("btnSave").disabled = true;
@@ -390,10 +863,10 @@ build_flags =
     }
 
     function applyQuick() {
+      mergeAllCommonIntoIni();
       let t = $("ini").value;
       const def = $("qDefault").value.trim();
       if (def) t = t.replace(/^default_envs\s*=.*/m, "default_envs = " + def);
-
       const targets = new Set(envNamesForPatch());
       const patches = {
         nodeId: $("qNodeId").value.trim() ? +$("qNodeId").value : null,
@@ -401,40 +874,40 @@ build_flags =
         backboneId: $("qBackboneId").value.trim() ? +$("qBackboneId").value : null,
         gatewayId: $("qGatewayId").value.trim() ? +$("qGatewayId").value : null,
       };
-
       if (targets.size && Object.values(patches).some((v) => v != null)) {
-        const parts = t.split(/(?=\n\[env:)/);
-        t = parts.map((part) => {
+        t = t.split(/(?=\n\[env:)/).map((part) => {
           const m = part.match(/^\[env:([^\]]+)\]/);
-          if (!m || !targets.has(m[1])) return part;
-          return patchEnvBlock(part, m[1], patches);
+          return !m || !targets.has(m[1]) ? part : patchEnvBlock(part, m[1], patches);
         }).join("");
       }
-
       const ch = $("qChannel").value.trim();
       if (ch) {
         const chNum = parseInt(ch, 10);
         if (Number.isNaN(chNum) || chNum < 0 || chNum > 125) {
-          setLog("RF channel must be 0–125 (nRF24 range).", "err");
+          setLog("RF channel must be 0–125.", "err");
           return;
         }
         const chVal = String(chNum);
         t = t.replace(/-DNODE_RF_CHANNEL=\d+/g, "-DNODE_RF_CHANNEL=" + chVal);
         t = t.replace(/-DBACKBONE_RF_CHANNEL=\d+/g, "-DBACKBONE_RF_CHANNEL=" + chVal);
         t = t.replace(/-DGATEWAY_RF_CHANNEL=\d+/g, "-DGATEWAY_RF_CHANNEL=" + chVal);
+        $("common-node_common").value = replaceEnvBlock($("common-node_common").value, "node_common",
+          $("common-node_common").value.replace(/-DNODE_RF_CHANNEL=\d+/g, "-DNODE_RF_CHANNEL=" + chVal));
+        $("common-backbone_common").value = $("common-backbone_common").value.replace(/-DBACKBONE_RF_CHANNEL=\d+/g, "-DBACKBONE_RF_CHANNEL=" + chVal);
+        $("common-gateway_common").value = $("common-gateway_common").value.replace(/-DGATEWAY_RF_CHANNEL=\d+/g, "-DGATEWAY_RF_CHANNEL=" + chVal);
       }
-
       $("ini").value = t;
       dirty = true;
+      syncCommonEditorsFromIni();
       renderEnvLists();
     }
 
     function addEnv(role) {
+      mergeAllCommonIntoIni();
       let t = $("ini").value;
       const name = nextEnvName(role, t);
       if (t.includes("[env:" + name + "]")) return;
-      const id = nextIdForRole(role, t);
-      t = insertEnvBlock(t, role, name, id);
+      t = insertEnvBlock(t, role, name, nextIdForRole(role, t));
       $("ini").value = t;
       dirty = true;
       renderEnvLists();
@@ -446,36 +919,46 @@ build_flags =
     function removeEnv(name) {
       const role = envRole(name);
       if (!role) return;
+      mergeAllCommonIntoIni();
       let t = $("ini").value;
       if (countRole(t, role) <= 1) {
         setLog("Cannot remove the last " + role + " environment.", "err");
         return;
       }
-      t = removeEnvBlock(t, name);
-      $("ini").value = t.replace(/\n{3,}/g, "\n\n");
+      $("ini").value = removeEnvBlock(t, name).replace(/\n{3,}/g, "\n\n");
       dirty = true;
+      syncCommonEditorsFromIni();
       renderEnvLists();
       saveChecked();
     }
 
-    function wireAside() {
-      document.querySelectorAll("[data-add]").forEach((btn) => {
-        btn.onclick = () => addEnv(btn.dataset.add);
+    function wirePanels() {
+      document.body.addEventListener("click", (e) => {
+        if (e.target.closest("[data-add]")) addEnv(e.target.closest("[data-add]").dataset.add);
+        if (e.target.closest("[data-remove]")) removeEnv(e.target.closest("[data-remove]").dataset.remove);
+      });
+      document.body.addEventListener("change", (e) => {
+        if (e.target.matches("input[data-env]")) saveChecked();
       });
       $("qScope").onchange = () => {
         $("qRoleWrap").style.display = $("qScope").value === "role" ? "block" : "none";
       };
-      document.querySelector("aside").addEventListener("click", (e) => {
-        const rm = e.target.closest("[data-remove]");
-        if (rm) removeEnv(rm.dataset.remove);
+      $("ini").addEventListener("input", () => {
+        dirty = true;
+        syncCommonEditorsFromIni();
+        renderEnvLists();
       });
-      document.querySelector("aside").addEventListener("change", (e) => {
-        if (e.target.matches("input[data-env]")) saveChecked();
+      COMMON_ENV_NAMES.forEach((name) => {
+        const el = $("common-" + name);
+        if (el) el.addEventListener("input", () => mergeCommonEditorIntoIni(name));
       });
     }
 
     async function boot() {
-      wireAside();
+      dockManager = DockManager;
+      dockManager.init();
+      wirePanels();
+      $("btnResetLayout").onclick = () => dockManager.reset();
       try {
         await api("/api/health");
         await loadIni();
@@ -491,12 +974,10 @@ build_flags =
       }).catch(() => {});
     }
 
-    $("ini").addEventListener("input", () => { dirty = true; renderEnvLists(); });
     $("btnReload").onclick = () => loadIni().catch((e) => showError(e.message));
     $("btnSave").onclick = () => saveIni().catch((e) => showError(e.message));
     $("btnBuild").onclick = () => startBuild().catch((e) => { showError(e.message); $("btnBuild").disabled = false; });
     $("btnApplyQuick").onclick = applyQuick;
-
     boot();
   </script>
 </body>
