@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>platformio.ini — Park Firmware Editor</title>
+  <style>
+    :root {
+      --bg: #0b1017; --panel: #141a23; --panel-2: #1b2330;
+      --border: #303947; --text: #e6edf3; --muted: #9aa6b2;
+      --accent: #58a6ff; --ok: #3fb950; --err: #f85149; --warn: #d29922;
+      --mono: Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font: 14px/1.4 "Segoe UI", sans-serif; background: var(--bg); color: var(--text);
+      height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+    }
+    .app-header {
+      display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+      background: linear-gradient(180deg, #171e28, var(--panel)); border-bottom: 1px solid var(--border);
+      flex-shrink: 0; flex-wrap: wrap;
+    }
+    .brand h1 { margin: 0; font-size: 16px; font-weight: 700; }
+    .brand .subtitle { color: var(--muted); font-size: 12px; }
+    .pill {
+      display: inline-flex; align-items: center; min-height: 24px; padding: 2px 8px; border: 1px solid var(--border);
+      border-radius: 999px; font-size: 12px; color: var(--muted); background: #0f151e;
+    }
+    .pill.ok { color: var(--ok); border-color: rgba(63,185,80,0.35); }
+    .pill.warn { color: var(--warn); border-color: rgba(210,153,34,0.35); }
+    .pill.bad { color: var(--err); border-color: rgba(248,81,73,0.35); }
+    .spacer { flex: 1; }
+    button {
+      font: inherit; cursor: pointer; border: 1px solid var(--border); background: #202a36; color: var(--text);
+      padding: 7px 12px; border-radius: 8px;
+    }
+    button:hover { border-color: var(--accent); background: #273344; }
+    button.primary { background: linear-gradient(180deg, #79b8ff, var(--accent)); border-color: var(--accent); color: #07111f; font-weight: 700; }
+    a.nav-link {
+      color: var(--accent); text-decoration: none; padding: 7px 12px; border: 1px solid var(--border);
+      border-radius: 8px; font-size: inherit;
+    }
+    a.nav-link:hover { background: #273344; }
+    .banner { display: none; padding: 10px 14px; background: #3d1f1f; color: #ffb4b4; border-bottom: 1px solid var(--err); flex-shrink: 0; }
+    .banner.show { display: block; }
+    .editor-wrap {
+      flex: 1; min-height: 0; margin: 12px; border: 1px solid var(--border); border-radius: 12px;
+      background: var(--panel); overflow: hidden; display: flex; flex-direction: column;
+    }
+    .editor-toolbar {
+      padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--panel-2);
+      color: var(--muted); font-size: 12px;
+    }
+    #ini {
+      flex: 1; min-height: 0; width: 100%; margin: 0; padding: 14px 16px; border: 0; resize: none;
+      font: 13px/1.45 var(--mono); background: var(--bg); color: var(--text);
+      scrollbar-color: #4b5563 #0f151e; scrollbar-width: thin;
+    }
+    #ini:focus { outline: none; }
+    #log {
+      flex-shrink: 0; margin: 0 12px 12px; padding: 8px 12px; border-radius: 8px;
+      border: 1px solid var(--border); background: #0f151e; font: 12px/1.4 var(--mono);
+      color: var(--muted); min-height: 2.4em; max-height: 4.5em; overflow: auto;
+    }
+    #log.ok { color: var(--ok); }
+    #log.err { color: var(--err); }
+  </style>
+</head>
+<body>
+  <div id="banner" class="banner"></div>
+  <header class="app-header">
+    <div class="brand">
+      <h1>platformio.ini</h1>
+      <div class="subtitle">Full file editor</div>
+    </div>
+    <span id="status" class="pill">Connecting...</span>
+    <span id="dirtyStatus" class="pill">Saved</span>
+    <span class="spacer"></span>
+    <a class="nav-link" href="/" id="linkHome">Environment manager</a>
+    <button type="button" id="btnReload">Reload</button>
+    <button type="button" id="btnSave" class="primary">Save</button>
+  </header>
+
+  <div class="editor-wrap">
+    <div class="editor-toolbar" id="pathHint">Loading platformio.ini...</div>
+    <textarea id="ini" spellcheck="false" placeholder="Loading platformio.ini..."></textarea>
+  </div>
+  <pre id="log"></pre>
+
+  <script>
+    let dirty = false;
+    const $ = (id) => document.getElementById(id);
+
+    function showError(msg) {
+      $("banner").textContent = msg;
+      $("banner").classList.add("show");
+    }
+    function clearError() {
+      $("banner").classList.remove("show");
+    }
+
+    async function api(path, opts) {
+      let r;
+      try { r = await fetch(path, opts); } catch {
+        throw new Error("Cannot reach editor server. Run open-editor.bat (do not open this file directly).");
+      }
+      const text = await r.text();
+      let data;
+      try { data = JSON.parse(text); } catch { throw new Error(text.slice(0, 200) || "Invalid response"); }
+      if (!data.ok && data.error) throw new Error(data.error);
+      if (!r.ok) throw new Error(data.error || r.statusText);
+      return data;
+    }
+
+    function updateDirtyStatus() {
+      const el = $("dirtyStatus");
+      el.textContent = dirty ? "Unsaved changes" : "Saved";
+      el.className = "pill " + (dirty ? "warn" : "ok");
+    }
+
+    function setLog(text, kind) {
+      const log = $("log");
+      log.textContent = text;
+      log.className = kind || "";
+    }
+
+    async function loadIni() {
+      const res = await api("/api/ini");
+      $("ini").value = res.content;
+      $("pathHint").textContent = res.path || "platformio.ini";
+      dirty = false;
+      clearError();
+      $("status").textContent = "Loaded";
+      $("status").className = "pill ok";
+      updateDirtyStatus();
+      setLog("", "");
+    }
+
+    async function saveIni() {
+      const res = await api("/api/ini", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: $("ini").value }),
+      });
+      dirty = false;
+      updateDirtyStatus();
+      setLog("Saved " + res.path, "ok");
+    }
+
+    function warnIfDirty(e) {
+      if (!dirty) return;
+      e.preventDefault();
+      e.returnValue = "";
+    }
+
+    $("ini").addEventListener("input", () => {
+      dirty = true;
+      updateDirtyStatus();
+    });
+    $("btnReload").onclick = () => loadIni().catch((e) => showError(e.message));
+    $("btnSave").onclick = () => saveIni().catch((e) => showError(e.message));
+    $("linkHome").addEventListener("click", (e) => {
+      if (!dirty) return;
+      if (!confirm("You have unsaved changes. Leave without saving?")) e.preventDefault();
+    });
+    window.addEventListener("beforeunload", warnIfDirty);
+
+    (async () => {
+      try {
+        await api("/api/health");
+        await loadIni();
+      } catch (e) {
+        showError(e.message);
+        $("status").textContent = "Offline";
+        $("status").className = "pill bad";
+      }
+    })();
+  </script>
+</body>
+</html>

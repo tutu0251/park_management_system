@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -23,6 +24,24 @@ _pio_build_mutex = threading.Lock()
 _build_jobs: dict[str, dict] = {}
 _pio_version: str | None = None
 _pio_checked = False
+
+
+def _env_names_from_ini() -> set[str]:
+    if not INI_PATH.is_file():
+        return set()
+    ini = INI_PATH.read_text(encoding="utf-8")
+    common = {"atmega8_base", "node_common", "backbone_common", "gateway_common"}
+    names = set(re.findall(r"(?m)^\[env:([^\]]+)\]", ini))
+    return {
+        name
+        for name in names
+        if name not in common
+        and (
+            re.fullmatch(r"node\d+", name)
+            or re.fullmatch(r"backbone\d*", name)
+            or re.fullmatch(r"gateway\d*", name)
+        )
+    }
 
 
 def _pio_version_once() -> str:
@@ -166,6 +185,18 @@ class EditorHandler(SimpleHTTPRequestHandler):
             envs = [str(e) for e in (data.get("envs") or []) if e]
             if not envs:
                 return self._json(400, {"ok": False, "error": "No environments selected"})
+            available = _env_names_from_ini()
+            missing = [env for env in envs if env not in available]
+            if missing:
+                return self._json(
+                    400,
+                    {
+                        "ok": False,
+                        "error": "Unknown build environment(s): "
+                        + ", ".join(missing)
+                        + ". Reload the editor or select an environment that exists in platformio.ini.",
+                    },
+                )
             if not _pio_version_once():
                 return self._json(500, {"ok": False, "error": "pio not on PATH — install PlatformIO first"})
             job_id = str(uuid.uuid4())[:8]
