@@ -55,28 +55,55 @@
     .banner.show { display: block; }
 
     .app-shell {
-      flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(260px, 320px) minmax(360px, 1fr) auto;
-      gap: 12px; padding: 12px; overflow: hidden;
+      flex: 1; min-height: 0; display: flex; align-items: stretch;
+      gap: 0; padding: 12px; overflow: hidden;
     }
     .left-stack, .workspace, .right-drawer {
       border: 1px solid var(--border); border-radius: 16px; background: var(--panel); min-height: 0;
       box-shadow: var(--shadow);
     }
     .left-stack, .right-drawer, .workspace {
-      resize: horizontal; overflow: auto; min-width: 240px; max-width: calc(100vw - 120px);
-      scrollbar-color: #4b5563 var(--surface); scrollbar-width: thin;
+      overflow: auto; scrollbar-color: #4b5563 var(--surface); scrollbar-width: thin;
     }
-    .left-stack::after, .workspace::after, .right-drawer::after {
-      content: "resize"; align-self: flex-end; margin: 0 2px 0 0; color: rgba(154,166,178,0.45);
-      font-size: 10px; line-height: 1; pointer-events: none;
+    .left-stack {
+      flex: 0 0 auto; width: 300px; min-width: 220px; max-width: 50vw;
+      display: flex; flex-direction: column; gap: 0; padding: 12px;
     }
-    .left-stack { display: flex; flex-direction: column; gap: 12px; padding: 12px; }
+    .workspace { flex: 1 1 0; min-width: 320px; overflow: hidden; }
     .role-rail, .inspector {
       border: 1px solid var(--border-soft); border-radius: 13px; background: var(--surface);
-      padding: 12px; overflow: auto; resize: vertical; min-height: 120px;
+      padding: 12px; overflow: auto; min-height: 100px;
     }
-    .role-rail { flex: 0 0 auto; }
-    .inspector { flex: 1 1 280px; }
+    .role-rail { flex: 0 0 auto; height: 220px; min-height: 100px; max-height: 70%; }
+    .inspector { flex: 1 1 0; min-height: 120px; }
+    .panel-splitter {
+      flex: 0 0 6px; position: relative; z-index: 2; touch-action: none;
+      background: transparent; transition: background 120ms ease;
+    }
+    .panel-splitter[data-axis="x"] { cursor: col-resize; }
+    .panel-splitter[data-axis="y"] { cursor: row-resize; }
+    .panel-splitter::before {
+      content: ""; position: absolute; background: var(--border); opacity: 0.45;
+      transition: opacity 120ms ease, background 120ms ease;
+    }
+    .panel-splitter[data-axis="x"]::before {
+      top: 12px; bottom: 12px; left: 50%; width: 1px; transform: translateX(-50%);
+    }
+    .panel-splitter[data-axis="y"]::before {
+      left: 12px; right: 12px; top: 50%; height: 1px; transform: translateY(-50%);
+    }
+    .panel-splitter:hover::before,
+    .panel-splitter.is-dragging::before {
+      opacity: 1; background: var(--accent);
+    }
+    .panel-splitter[data-axis="x"]:hover::before,
+    .panel-splitter[data-axis="x"].is-dragging::before { width: 2px; }
+    .panel-splitter[data-axis="y"]:hover::before,
+    .panel-splitter[data-axis="y"].is-dragging::before { height: 2px; }
+    body.is-resizing-panels { user-select: none; }
+    body.is-resizing-panels[data-resize-axis="x"] { cursor: col-resize !important; }
+    body.is-resizing-panels[data-resize-axis="y"] { cursor: row-resize !important; }
+    body.is-resizing-panels * { cursor: inherit !important; }
     .rail-title, .section-title {
       margin: 0 0 10px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em;
     }
@@ -93,7 +120,7 @@
     .rail-metric { margin-top: 14px; padding: 12px; border-radius: 12px; background: var(--surface-2); color: var(--muted); border: 1px solid var(--border-soft); }
     .metric-value { display: block; color: var(--text); font-size: 24px; font-weight: 650; }
 
-    .workspace { display: flex; flex-direction: column; overflow: hidden; resize: both; }
+    .workspace { display: flex; flex-direction: column; }
     .workspace-toolbar {
       display: flex; align-items: center; gap: 12px; padding: 14px; border-bottom: 1px solid var(--border);
       background: linear-gradient(180deg, var(--panel-2), #17202b); flex-wrap: wrap;
@@ -135,7 +162,7 @@
 
     details.panel {
       border: 1px solid var(--border-soft); border-radius: 12px; background: var(--surface); margin-bottom: 10px; overflow: hidden;
-      resize: vertical; min-height: 44px;
+      min-height: 44px;
     }
     details.panel > summary {
       cursor: pointer; padding: 10px 12px; background: var(--panel-2); font-weight: 650;
@@ -159,8 +186,8 @@
     .quick .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .hint { font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.35; }
     .right-drawer {
-      display: flex; flex-direction: column; gap: 10px; padding: 12px; resize: horizontal;
-      width: 420px; min-width: 280px; max-width: 70vw; justify-self: end;
+      flex: 0 0 auto; display: flex; flex-direction: column; gap: 10px; padding: 12px;
+      width: 420px; min-width: 260px; max-width: 70vw;
       border-radius: 13px; background: var(--surface);
     }
     .right-drawer .panel { flex: 1 1 220px; min-height: 120px; margin: 0; }
@@ -174,8 +201,10 @@
     #log.ok { color: var(--ok); } #log.err { color: var(--err); }
     @media (max-width: 1100px) {
       body { overflow: auto; height: auto; min-height: 100vh; }
-      .app-shell { grid-template-columns: 1fr; overflow: visible; }
-      .left-stack, .right-drawer, .workspace { resize: vertical; max-width: none; }
+      .app-shell { flex-direction: column; overflow: visible; }
+      .panel-splitter { display: none; }
+      .left-stack, .right-drawer { width: auto !important; max-width: none; flex: none; }
+      .role-rail { height: auto !important; max-height: none; }
       .role-rail { display: grid; grid-template-columns: repeat(4, minmax(130px, 1fr)); gap: 8px; }
       .role-rail .rail-title, .role-rail .rail-metric { grid-column: 1 / -1; }
       .role-btn { margin: 0; }
@@ -211,8 +240,8 @@
   </header>
 
   <main class="app-shell">
-    <aside class="left-stack" aria-label="Environment controls">
-      <section class="role-rail" aria-label="Environment roles">
+    <aside class="left-stack" id="panelLeft" aria-label="Environment controls">
+      <section class="role-rail" id="panelRoleRail" aria-label="Environment roles">
         <h2 class="rail-title">Roles</h2>
         <button type="button" class="role-btn active" data-role-filter="all"><span>All environments</span><strong id="count-all">0</strong></button>
         <button type="button" class="role-btn" data-role-filter="node"><span><i class="role-dot node"></i>Nodes</span><strong id="count-node">0</strong></button>
@@ -220,6 +249,7 @@
         <button type="button" class="role-btn" data-role-filter="gateway"><span><i class="role-dot gateway"></i>Gateways</span><strong id="count-gateway">0</strong></button>
         <div class="rail-metric"><span class="metric-value" id="selectedCount">0</span>selected for build</div>
       </section>
+      <div class="panel-splitter" data-axis="y" data-panel="roleRail" role="separator" aria-orientation="horizontal" aria-label="Resize roles and inspector"></div>
 
       <section class="inspector" aria-label="Configuration inspector">
         <h2 class="section-title">Inspector</h2>
@@ -271,6 +301,7 @@
         </details>
       </section>
     </aside>
+    <div class="panel-splitter" data-axis="x" data-panel="left" role="separator" aria-orientation="vertical" aria-label="Resize sidebar"></div>
 
     <section class="workspace" aria-label="Environment workspace">
       <div class="workspace-toolbar">
@@ -284,8 +315,9 @@
       <div id="validationPanel" class="validation-panel"></div>
       <div id="envGrid" class="env-grid"></div>
     </section>
+    <div class="panel-splitter" data-axis="x" data-panel="right" role="separator" aria-orientation="vertical" aria-label="Resize output panel"></div>
 
-    <aside class="right-drawer" aria-label="Build output">
+    <aside class="right-drawer" id="panelRight" aria-label="Build output">
       <h2 class="section-title">Output</h2>
       <details class="panel" open>
         <summary>Build log</summary>
@@ -600,6 +632,91 @@
     }
 
     const CHECK_KEY = "park-fw-editor-checked";
+    const LAYOUT_KEY = "park-fw-editor-layout";
+    const LAYOUT_DEFAULTS = { left: 300, right: 420, roleRail: 220 };
+
+    function loadLayout() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(LAYOUT_KEY) || "{}");
+        return { ...LAYOUT_DEFAULTS, ...saved };
+      } catch {
+        return { ...LAYOUT_DEFAULTS };
+      }
+    }
+
+    function saveLayout(layout) {
+      localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout));
+    }
+
+    function applyLayout(layout) {
+      const left = $("panelLeft");
+      const right = $("panelRight");
+      const roleRail = $("panelRoleRail");
+      if (left) left.style.width = layout.left + "px";
+      if (right) {
+        right.style.width = layout.right + "px";
+        right.style.flexBasis = layout.right + "px";
+      }
+      if (roleRail) roleRail.style.height = layout.roleRail + "px";
+    }
+
+    function initPanelSplitters() {
+      const layout = loadLayout();
+      applyLayout(layout);
+      const shell = document.querySelector(".app-shell");
+      if (!shell) return;
+
+      const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+      document.querySelectorAll(".panel-splitter").forEach((splitter) => {
+        splitter.addEventListener("mousedown", (e) => {
+          if (e.button !== 0 || window.matchMedia("(max-width: 1100px)").matches) return;
+          e.preventDefault();
+          const panel = splitter.dataset.panel;
+          const axis = splitter.dataset.axis || "x";
+          const startX = e.clientX;
+          const startY = e.clientY;
+          const startLeft = layout.left;
+          const startRight = layout.right;
+          const startRole = layout.roleRail;
+          const shellRect = shell.getBoundingClientRect();
+          const leftEl = $("panelLeft");
+          const rightEl = $("panelRight");
+
+          splitter.classList.add("is-dragging");
+          document.body.classList.add("is-resizing-panels");
+          document.body.dataset.resizeAxis = axis;
+
+          const onMove = (ev) => {
+            if (panel === "left" && leftEl) {
+              const max = shellRect.width - layout.right - 360;
+              layout.left = clamp(startLeft + (ev.clientX - startX), 220, max);
+            } else if (panel === "right" && rightEl) {
+              const max = shellRect.width - layout.left - 360;
+              layout.right = clamp(startRight + (startX - ev.clientX), 260, Math.min(shellRect.width * 0.7, max));
+            } else if (panel === "roleRail" && leftEl) {
+              const stackRect = leftEl.getBoundingClientRect();
+              const max = stackRect.height - 140;
+              layout.roleRail = clamp(startRole + (ev.clientY - startY), 100, max);
+            }
+            applyLayout(layout);
+          };
+
+          const onUp = () => {
+            splitter.classList.remove("is-dragging");
+            document.body.classList.remove("is-resizing-panels");
+            delete document.body.dataset.resizeAxis;
+            saveLayout(layout);
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+          };
+
+          document.addEventListener("mousemove", onMove);
+          document.addEventListener("mouseup", onUp);
+        });
+      });
+    }
+
     function loadChecked() {
       try { return JSON.parse(sessionStorage.getItem(CHECK_KEY) || "[]"); } catch { return []; }
     }
@@ -837,6 +954,7 @@
 
     async function boot() {
       wirePanels();
+      initPanelSplitters();
       try {
         await api("/api/health");
         await loadIni();
